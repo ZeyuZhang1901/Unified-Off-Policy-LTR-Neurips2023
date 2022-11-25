@@ -343,8 +343,8 @@ class LetorDataset(AbstractDataset):
     #             return docid
 
     def get_docid_by_query_and_feature(self, query, action):
-        candidates = self._query_get_all_features[query]
-        n = candidates.shape[0]
-        for i in range(n):
-            if np.array_equal(candidates[i].astype(np.float32), action.astype(np.float32)):
+        candidates = self._query_get_all_features[query].astype(np.float32)
+        action = np.array(action, dtype=np.float32)
+        for i in range(candidates.shape[0]):
+            if np.array_equal(candidates[i], action):
                 return i

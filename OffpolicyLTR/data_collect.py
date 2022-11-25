@@ -36,11 +36,13 @@ def dataCollect(state_dim,
                 next_state[:action_dim] = action + i/(i+1)*state[:action_dim]
                 if action_dim+i < state_dim:
                     next_state[action_dim+i] = reward
+                done = 1 if i==len(result_list)-1 else 0
 
                 memory.push(torch.tensor(state, dtype=torch.float32).reshape(1,-1),
                             torch.tensor(action, dtype=torch.float32).reshape(1,-1),
                             torch.tensor(next_state, dtype=torch.float32).reshape(1,-1),
                             torch.tensor([[reward]], dtype=torch.float32),
+                            torch.tensor([[done]], dtype=torch.int),
                             torch.tensor(chosen),
                             qid)
                 chosen[int(result_list[i])] = False        

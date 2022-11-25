@@ -8,7 +8,7 @@ from ranker.AbstractRanker import AbstractRanker
 from network.DQN import DQN
 from collections import namedtuple
 
-Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'chosen', 'qid'))
+Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'done', 'chosen', 'qid'))
 
 class DQNRanker(AbstractRanker):
     def __init__(self,
@@ -40,15 +40,16 @@ class DQNRanker(AbstractRanker):
         nextstates = torch.cat(batch.next_state).to(self.device)
         # next_state_batch = torch.zeros_like(torch.cat(batch.next_state), dtype=torch.float32).to(self.device)
         rewards = torch.cat(batch.reward).to(self.device)
+        dones = torch.cat(batch.done).to(self.device)
 
         Q_s_a = self.q(states, actions)
         with torch.no_grad():
             Q_nexts_nexta = torch.zeros(self.batch_size, 1, dtype=torch.float32).to(self.device)
             for i in range(self.batch_size):
-                candidates = torch.from_numpy(dataset.get_all_features_by_query(batch.qid[i])).to(self.device).to(torch.float32)
+                candidates = torch.tensor(dataset.get_all_features_by_query(batch.qid[i])).to(self.device).to(torch.float32)
                 candidates = candidates[batch.chosen[i]]
                 Q_nexts_nexta[i,0] = self.getTargetMaxValue(nextstates[i], candidates)
-            Q_nexts_nexta = rewards + self.discount * Q_nexts_nexta 
+            Q_nexts_nexta = rewards + (1-dones) * self.discount * Q_nexts_nexta 
 
         loss = F.mse_loss(Q_s_a, Q_nexts_nexta)
         self.optimizer.zero_grad()
@@ -108,8 +109,12 @@ class DQNRanker(AbstractRanker):
                     state,
                     candidates):
         with torch.no_grad():
-            state = torch.from_numpy(state).expand(candidates.shape[0], -1).to(self.device)
-            candidates = torch.from_numpy(candidates).to(self.device)
+            if type(state)==np.ndarray:
+                state = torch.from_numpy(state)
+            if type(candidates)==np.ndarray:
+                candidates = torch.from_numpy(candidates) 
+            state = state.expand(candidates.shape[0], -1).to(self.device)
+            candidates = candidates.to(self.device)
             scores = self.q(state, candidates)
             return candidates[torch.max(scores, 0)[1]].squeeze(0).cpu().numpy()
 
