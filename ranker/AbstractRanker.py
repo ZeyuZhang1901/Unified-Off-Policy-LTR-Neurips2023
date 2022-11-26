@@ -25,3 +25,11 @@ class AbstractRanker:
     def get_scores(self, features):
         raise NotImplementedError("Derived class needs to implement "
                                   "features.")
+
+    def restore_ranker(self):
+        raise NotImplementedError("Derived class need to implement "
+                                  "restore_ranker.")
+
+    def load_ranker(self):
+        raise NotImplementedError("Derived class need to implement "
+                                  "load_ranker.")

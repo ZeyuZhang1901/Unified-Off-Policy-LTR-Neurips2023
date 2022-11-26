@@ -13,9 +13,11 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--feature_size', type=int, required=True)
 parser.add_argument('--dataset_fold', type=str, required=True)
 parser.add_argument('--output_fold', type=str, required=True)
 parser.add_argument('--rel_level', type=int, required=True)
+parser.add_argument('--sample_iter', type=int, required=True)
 args = parser.parse_args()
 
 # %%
@@ -57,7 +59,9 @@ def job(model_type,
         f, 
         train_set, 
         test_set, 
-        output_fold
+        output_fold,
+        load=False,
+        save=False
     ):
 
     if args.rel_level == 5:
@@ -86,13 +90,21 @@ def job(model_type,
 
     for r in range(1, 2):
         np.random.seed(r)
-        print("DoubleDQN MQ2008 fold{} {}  run{} start!".format(f, model_type, r))
-        # print("DoubleDQN MQ2007 fold{} {}  run{} start!".format(f, model_type, r))
-        # print("DoubleDQN MSLR10K fold{} {}  run{} start!".format(f, model_type, r))
-        ranker = DoubleDQNRanker(state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
-        dataCollect(state_dim, action_dim, memory, ranker, train_set, cm, sample_iteration, CAPACITY)
-        ndcg_scores, q_values, target_q_values, losses = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
         writer = SummaryWriter("{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r))
+        print("DoubleDQN fold{} {}  run{} start!".format(f, model_type, r))
+
+        ranker = DoubleDQNRanker(state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
+        if load:
+            ranker.load_ranker(f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
+        dataCollect(state_dim, action_dim, memory, ranker, train_set, cm, sample_iteration, int(CAPACITY))
+        ndcg_scores, q_values, target_q_values, losses = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
+        if save:
+            ranker.restore_ranker(f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
+
+        evl_tool.write_performance(path=f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_trainset_{NUM_INTERACTION}.txt',
+                                dataset=train_set, ranker=ranker, end_pos=END_POS)
+        evl_tool.write_performance(path=f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_testset_{NUM_INTERACTION}.txt',
+                                dataset=test_set, ranker=ranker, end_pos=END_POS)
         for i in range(len(ndcg_scores)):
             writer.add_scalar('ndcg',ndcg_scores[i], i+1)
         for j in range(len(losses)):
@@ -104,18 +116,17 @@ def job(model_type,
 if __name__ == "__main__":
 
     END_POS = 10
-    # FEATURE_SIZE = 136
-    # ACTION_DIM = 136
-    FEATURE_SIZE = 46
-    ACTION_DIM = 46
-    STATE_DIM = ACTION_DIM + END_POS
+    FEATURE_SIZE = args.feature_size
+    STATE_DIM = FEATURE_SIZE + END_POS
     BATCH_SIZE = 256
-    NUM_INTERACTION = 10000
-    SAMPLE_ITERATION = 1
-    CAPACITY = 1e6
+    NUM_INTERACTION = 100000
+    SAMPLE_ITERATION = args.sample_iter
+    CAPACITY = 3e6
     DISCOUNT = 0.9
     TAU = 0.005
     LR = 1e-3
+    LOAD = False
+    SAVE = True
     NORMALIZE = True
 
     # click_models = ["informational", "perfect", "navigational"]
@@ -136,8 +147,9 @@ if __name__ == "__main__":
         processors = []
         # for 3 click_models
         for click_model in click_models:
-            p = mp.Process(target=job, args=(click_model, SAMPLE_ITERATION, STATE_DIM, ACTION_DIM, memory, f, 
-                    train_set, test_set, output_fold))
+            p = mp.Process(target=job, 
+                    args=(click_model, SAMPLE_ITERATION, STATE_DIM, FEATURE_SIZE, memory,
+                    f, train_set, test_set, output_fold, LOAD, SAVE))
             p.start()
             processors.append(p)
     for p in processors:

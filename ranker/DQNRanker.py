@@ -118,3 +118,10 @@ class DQNRanker(AbstractRanker):
             scores = self.q(state, candidates)
             return candidates[torch.max(scores, 0)[1]].squeeze(0).cpu().numpy()
 
+    def restore_ranker(self, path):
+        torch.save(self.q.state_dict(), path+'q.pt')
+        torch.save(self.target_q.state_dict(), path+'target_q.pt')
+
+    def load_ranker(self, path):
+        self.q.load_state_dict(torch.load(path+'q.pt'))
+        self.target_q.load_state_dict(torch.load(path+'target_q.pt'))

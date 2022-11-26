@@ -14,9 +14,9 @@ def dataCollect(state_dim,
     index = np.arange(len(query_set))
     print(f"num of query: {len(query_set)}")
 
+    query_count = 0
     for _ in range(sample_iteration):
         np.random.shuffle(index)
-        query_count = 0
         for i in index:
             query_count += 1
             qid = query_set[i]

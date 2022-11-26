@@ -49,7 +49,7 @@ class DoubleDQNRanker(AbstractRanker):
                 if batch.done[i] == True:
                     continue
                 candidates = torch.tensor(dataset.get_all_features_by_query(batch.qid[i])).to(self.device).to(torch.float32)
-                docid = dataset.get_docid_by_query_and_feature(batch.qid[i], actions[i])
+                docid = dataset.get_docid_by_query_and_feature(batch.qid[i], actions[i].cpu())
                 batch.chosen[i][docid] = False
                 candidates = candidates[batch.chosen[i]]
                 next_action = self.selectAction(state=nextstates[i].view(1,-1), candidates=candidates)
@@ -115,9 +115,6 @@ class DoubleDQNRanker(AbstractRanker):
             state = state.expand(candidates.shape[0], -1).to(self.device)
             candidates = candidates.to(self.device)
             scores = self.q(state, candidates)
-            # debug = torch.max(scores, 0)[1]
-            # debug2 = candidates[debug]
-            # debug3 = debug2.squeeze(0)
             return candidates[torch.max(scores, 0)[1]].squeeze(0).cpu().numpy()
 
     def getTargetMaxValue(self,
@@ -126,3 +123,11 @@ class DoubleDQNRanker(AbstractRanker):
 
         scores = self.target_q(state.expand(candidates.shape[0], -1), candidates)
         return torch.max(scores, 0)[0].item()
+
+    def restore_ranker(self, path):
+        torch.save(self.q.state_dict(), path+'q.pt')
+        torch.save(self.target_q.state_dict(), path+'target_q.pt')
+
+    def load_ranker(self, path):
+        self.q.load_state_dict(torch.load(path+'q.pt'))
+        self.target_q.load_state_dict(torch.load(path+'q.pt'))
