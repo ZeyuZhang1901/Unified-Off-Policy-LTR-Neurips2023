@@ -11,7 +11,11 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/2008_mq_dataset", "--output_fold", "results/MQ2008/DoubleDQN", "--rel_level", "3", "--feature_size", "136"]
+            "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/2008_mq_dataset",
+                    "--output_fold", "results/MQ2008/BCQ", 
+                    "--rel_level", "3", 
+                    "--feature_size", "46",
+                    "--sample_iter", "1"]
             // "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K", "--output_fold", "results/MQ2008/DoubleDQN", "--rel_level", "5", "--feature_size", "136"]
         }
     ]
