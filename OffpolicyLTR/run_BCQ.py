@@ -4,15 +4,16 @@ sys.path.append('../')
 from torch.utils.tensorboard import SummaryWriter
 from utils import evl_tool
 from network.Memory import Memory
-from ranker.DoubleDQNRanker import DoubleDQNRanker
+from ranker.BCQRanker import BCQRanker
 from clickModel.CM import CM
 from clickModel.PBM import PBM
 from data_collect import dataCollect
 from dataset import LetorDataset
 
-import numpy as np
 import multiprocessing as mp
+import numpy as np
 import argparse
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--feature_size', type=int, required=True)
@@ -25,8 +26,7 @@ args = parser.parse_args()
 # %%
 
 
-def run(train_set,
-        test_set,
+def run(test_set,
         ranker,
         memory,
         num_iteration,
@@ -34,25 +34,36 @@ def run(train_set,
         ):
 
     ndcg_scores = []
-    q_values = []
-    target_q_values = []
-    losses = []
+    q1_values = []
+    q2_values = []
+    target_q1_values = []
+    target_q2_values = []
+    actor_losses = []
+    critic_losses = []
 
     for i in range(num_iteration):
-        q, target_q, loss = ranker.update_policy(memory, train_set)
-        q_values.append(q)
-        target_q_values.append(target_q)
-        losses.append(loss)
-        print(f"iter {i+1}: q_value {q} target q value {target_q} loss {loss}")
+        q1, q2, target_q1, target_q2, critic_loss, actor_loss = ranker.update_policy(
+            memory)
+        q1_values.append(q1)
+        q2_values.append(q2)
+        target_q1_values.append(target_q1)
+        target_q2_values.append(target_q2)
+        critic_losses.append(critic_loss)
+        actor_losses.append(actor_loss)
 
-        # evaluate
+        print(f"iter {i+1}: ")
+        print(f"q1_value {q1} q2_value {q2}")
+        print(f"target_q1_value {target_q1} target_q2_value {target_q2}")
+        print(f"actor_loss {actor_loss} critic_loss {critic_loss}")
+        # evaluate 100 times in one train session
         if i % int(num_iteration/100) == 0:
             all_result = ranker.get_all_query_result_list(test_set)
             ndcg = evl_tool.average_ndcg_at_k(test_set, all_result, end_pos)
             ndcg_scores.append(ndcg)
             print(f"eval {int((i+1)/100)} ndcg {ndcg}")
 
-    return ndcg_scores, q_values, target_q_values, losses
+    return ndcg_scores, q1_values, q2_values, target_q1_values, \
+        target_q2_values, actor_losses, critic_losses
 
 # %%
 
@@ -98,17 +109,18 @@ def job(model_type,
         np.random.seed(r)
         writer = SummaryWriter(
             "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r))
-        print("DoubleDQN fold{} {}  run{} start!".format(f, model_type, r))
+        print("DQN fold{} {}  run{} start!".format(f, model_type, r))
 
-        ranker = DoubleDQNRanker(
-            state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
+        ranker = BCQRanker(state_dim, action_dim, MAX_ACTION, BATCH_SIZE, LR,
+                           DISCOUNT, TAU, LAMBDA, PHI)
         if load:
             ranker.load_ranker(
                 f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
         dataCollect(state_dim, action_dim, memory, ranker,
-                    train_set, cm, sample_iteration, int(CAPACITY))
-        ndcg_scores, q_values, target_q_values, losses = run(
-            train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
+                    train_set, cm, sample_iteration, CAPACITY)
+        ndcg_scores, q1_values, q2_values, target_q1_values, \
+            target_q2_values, actor_losses, critic_losses = run(
+                test_set, ranker, memory, NUM_INTERACTION, END_POS)
         if save:
             ranker.restore_ranker(
                 f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
@@ -120,12 +132,15 @@ def job(model_type,
         print(f"matrics record start!")
         for i in range(len(ndcg_scores)):
             writer.add_scalar('ndcg', ndcg_scores[i], i+1)
-        for j in range(len(losses)):
-            writer.add_scalar('policy', q_values[j], j+1)
-            writer.add_scalar('target', target_q_values[j], j+1)
-            writer.add_scalar('avg_loss', losses[j], j+1)
-        writer.close()
+        for j in range(len(q1_values)):
+            writer.add_scalars('policy', {'q1': q1_values[j],
+                                          'q2': q2_values[j]}, j+1)
+            writer.add_scalar('target', {'target_q1': target_q1_values[j],
+                                         'target_q2': target_q2_values[j]}, j+1)
+            writer.add_scalars('avg_loss', {'actor_loss': actor_losses[i],
+                                            'critic_loss': critic_losses[j]}, j+1)
         print(f"matrics record finish!")
+        writer.close()
 
 
 if __name__ == "__main__":
@@ -133,17 +148,18 @@ if __name__ == "__main__":
     END_POS = 10
     FEATURE_SIZE = args.feature_size
     STATE_DIM = FEATURE_SIZE + END_POS
+    MAX_ACTION = 1  # after normalization
     BATCH_SIZE = 256
     NUM_INTERACTION = 100000
     SAMPLE_ITERATION = args.sample_iter
     CAPACITY = 3e6
     DISCOUNT = 0.9
     TAU = 0.005
+    LAMBDA = 0.75  # target calculation
+    PHI = 0.05,  # perturb range
     LR = 1e-3
-    # LOAD = False
-    LOAD = True
-    # SAVE = True
-    SAVE = False
+    LOAD = False
+    SAVE = True
     NORMALIZE = True
 
     # click_models = ["informational", "perfect", "navigational"]

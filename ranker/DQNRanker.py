@@ -8,17 +8,19 @@ from ranker.AbstractRanker import AbstractRanker
 from network.DQN import DQN
 from collections import namedtuple
 
-Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'done', 'chosen', 'qid'))
+Transition = namedtuple('Transition', ('state', 'action',
+                        'next_state', 'reward', 'done', 'chosen', 'qid'))
+
 
 class DQNRanker(AbstractRanker):
     def __init__(self,
-                state_dim,
-                action_dim,
-                lr=1e-3,
-                batch_size = 256,
-                discount = 0.9,
-                tau = 0.005  # soft update rate
-                ):
+                 state_dim,
+                 action_dim,
+                 lr=1e-3,
+                 batch_size=256,
+                 discount=0.9,
+                 tau=0.005  # soft update rate
+                 ):
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.state_dim = state_dim
@@ -44,12 +46,15 @@ class DQNRanker(AbstractRanker):
 
         Q_s_a = self.q(states, actions)
         with torch.no_grad():
-            Q_nexts_nexta = torch.zeros(self.batch_size, 1, dtype=torch.float32).to(self.device)
+            Q_nexts_nexta = torch.zeros(
+                self.batch_size, 1, dtype=torch.float32).to(self.device)
             for i in range(self.batch_size):
-                candidates = torch.tensor(dataset.get_all_features_by_query(batch.qid[i])).to(self.device).to(torch.float32)
+                candidates = torch.tensor(dataset.get_all_features_by_query(
+                    batch.qid[i])).to(self.device).to(torch.float32)
                 candidates = candidates[batch.chosen[i]]
-                Q_nexts_nexta[i,0] = self.getTargetMaxValue(nextstates[i], candidates)
-            Q_nexts_nexta = rewards + (1-dones) * self.discount * Q_nexts_nexta 
+                Q_nexts_nexta[i, 0] = self.getTargetMaxValue(
+                    nextstates[i], candidates)
+            Q_nexts_nexta = rewards + (1-dones) * self.discount * Q_nexts_nexta
 
         loss = F.mse_loss(Q_s_a, Q_nexts_nexta)
         self.optimizer.zero_grad()
@@ -58,12 +63,16 @@ class DQNRanker(AbstractRanker):
 
         # target network soft update
         for param, target_param in zip(self.q.parameters(), self.target_q.parameters()):
-           target_param.data.copy_(self.tau * param.data + (1-self.tau) * target_param.data)
+            target_param.data.copy_(
+                self.tau * param.data + (1-self.tau) * target_param.data)
 
-        return Q_s_a.mean().item(), Q_nexts_nexta.mean().item(), loss.item()
+        return Q_s_a.mean().item(),\
+            Q_nexts_nexta.mean().item(),\
+            loss.item()
 
     def get_query_result_list(self, dataset, query):
-        candidates = dataset.get_all_features_by_query(query).astype(np.float32)
+        candidates = dataset.get_all_features_by_query(
+            query).astype(np.float32)
         docid_list = dataset.get_candidate_docids_by_query(query)
         ndoc = len(docid_list)
         ranklist = np.zeros(ndoc, dtype=np.int32)
@@ -73,55 +82,65 @@ class DQNRanker(AbstractRanker):
         for pos in range(ndoc):
             # state
             state = next_state
-            # action 
-            action = self.selectAction(state=state.reshape(1,-1), candidates=candidates)
+            # action
+            action = self.selectAction(
+                state=state.reshape(1, -1), candidates=candidates)
             # reward
             docid = dataset.get_docid_by_query_and_feature(query, action)
-            relevance = dataset.get_relevance_label_by_query_and_docid(query, docid)
+            relevance = dataset.get_relevance_label_by_query_and_docid(
+                query, docid)
             ranklist[pos] = docid
             # next state
-            next_state[:self.action_dim] = action + pos*state[:self.action_dim]/(pos+1)
+            next_state[:self.action_dim] = action + \
+                pos*state[:self.action_dim]/(pos+1)
             if self.action_dim+pos < self.state_dim:
-                next_state[self.action_dim + pos] = 1/np.log2(pos+2) if relevance > 0 else 0
+                next_state[self.action_dim + pos] = 1 / \
+                    np.log2(pos+2) if relevance > 0 else 0
             # delete chosen doc in candidates
             for i in range(candidates.shape[0]):
                 if np.array_equal(candidates[i], action):
                     candidates = np.delete(candidates, i, axis=0)
                     break
-        
+
         return ranklist
 
     def get_all_query_result_list(self, dataset):
         query_result_list = {}
         for query in dataset.get_all_querys():
-            query_result_list[query] = self.get_query_result_list(dataset, query)
+            query_result_list[query] = self.get_query_result_list(
+                dataset, query)
 
         return query_result_list
 
     def getTargetMaxValue(self,
-                        state,
-                        candidates):
+                          state,
+                          candidates):
 
-        scores = self.target_q(state.expand(candidates.shape[0], -1), candidates)
+        scores = self.target_q(state.expand(
+            candidates.shape[0], -1), candidates)
         return torch.max(scores, 0)[0].item()
 
     def selectAction(self,
-                    state,
-                    candidates):
+                     state,
+                     candidates):
         with torch.no_grad():
-            if type(state)==np.ndarray:
+            if type(state) == np.ndarray:
                 state = torch.from_numpy(state)
-            if type(candidates)==np.ndarray:
-                candidates = torch.from_numpy(candidates) 
+            if type(candidates) == np.ndarray:
+                candidates = torch.from_numpy(candidates)
             state = state.expand(candidates.shape[0], -1).to(self.device)
             candidates = candidates.to(self.device)
             scores = self.q(state, candidates)
             return candidates[torch.max(scores, 0)[1]].squeeze(0).cpu().numpy()
 
     def restore_ranker(self, path):
+        print('restore ranker start!')
         torch.save(self.q.state_dict(), path+'q.pt')
         torch.save(self.target_q.state_dict(), path+'target_q.pt')
+        print('restore ranker finish!')
 
     def load_ranker(self, path):
+        print('load ranker start!')
         self.q.load_state_dict(torch.load(path+'q.pt'))
         self.target_q.load_state_dict(torch.load(path+'target_q.pt'))
+        print('load ranker finish!')
