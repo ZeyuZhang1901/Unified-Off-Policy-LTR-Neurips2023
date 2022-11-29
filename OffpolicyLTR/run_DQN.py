@@ -90,28 +90,28 @@ def job(model_type,
 
     for r in range(1, 2):
         np.random.seed(r)
-        writer = SummaryWriter("{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r))
-        print("DQN fold{} {}  run{} start!".format(f, model_type, r))
+        # writer = SummaryWriter("{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r))
+        # print("DQN fold{} {}  run{} start!".format(f, model_type, r))
 
         ranker = DQNRanker(state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
         if load:
             ranker.load_ranker(f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
-        dataCollect(state_dim, action_dim, memory, ranker, train_set, cm, sample_iteration, CAPACITY)
-        ndcg_scores, q_values, target_q_values, losses = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
-        if save:
-            ranker.restore_ranker(f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
+        # dataCollect(state_dim, action_dim, memory, ranker, train_set, cm, sample_iteration, CAPACITY)
+        # ndcg_scores, q_values, target_q_values, losses = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
+        # if save:
+        #     ranker.restore_ranker(f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
 
         evl_tool.write_performance(path=f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_trainset_{NUM_INTERACTION}.txt',
                                 dataset=train_set, ranker=ranker, end_pos=END_POS)
         evl_tool.write_performance(path=f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_testset_{NUM_INTERACTION}.txt',
                                 dataset=test_set, ranker=ranker, end_pos=END_POS)
-        for i in range(len(ndcg_scores)):
-            writer.add_scalar('ndcg',ndcg_scores[i], i+1)
-        for j in range(len(losses)):
-            writer.add_scalar('policy', q_values[j], j+1)
-            writer.add_scalar('target', target_q_values[j], j+1)
-            writer.add_scalar('avg_loss', losses[j], j+1)
-        writer.close()
+        # for i in range(len(ndcg_scores)):
+        #     writer.add_scalar('ndcg',ndcg_scores[i], i+1)
+        # for j in range(len(losses)):
+        #     writer.add_scalar('policy', q_values[j], j+1)
+        #     writer.add_scalar('target', target_q_values[j], j+1)
+        #     writer.add_scalar('avg_loss', losses[j], j+1)
+        # writer.close()
 
 if __name__ == "__main__":
 
@@ -125,13 +125,15 @@ if __name__ == "__main__":
     DISCOUNT = 0.9
     TAU = 0.005
     LR = 1e-3
-    LOAD = False
+    # LOAD = False
+    LOAD = True
     SAVE = True
     NORMALIZE = True
 
     # click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]
-    click_models = ["perfect"]
+    # click_models = ["perfect"]
+    click_models = ["navigational"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
