@@ -5,6 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils import evl_tool
 from network.Memory import Memory
 from ranker.BCQRanker import BCQRanker
+from ranker.RandomRanker import RandomRanker
 from clickModel.CM import CM
 from clickModel.PBM import PBM
 from data_collect import dataCollect
@@ -12,9 +13,9 @@ from dataset import LetorDataset
 
 import multiprocessing as mp
 import numpy as np
+np.random.seed(1958)
+
 import argparse
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--feature_size', type=int, required=True)
 parser.add_argument('--dataset_fold', type=str, required=True)
@@ -106,17 +107,18 @@ def job(model_type,
     cm = CM(pc, 1)
 
     for r in range(1, 2):
-        np.random.seed(r)
+        # np.random.seed(r)
         writer = SummaryWriter(
             "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r))
         print("DQN fold{} {}  run{} start!".format(f, model_type, r))
 
         ranker = BCQRanker(state_dim, action_dim, MAX_ACTION, BATCH_SIZE, LR,
                            DISCOUNT, TAU, LAMBDA, PHI)
+        behavior_ranker = RandomRanker()
         if load:
             ranker.load_ranker(
                 f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
-        dataCollect(state_dim, action_dim, memory, ranker,
+        dataCollect(state_dim, action_dim, memory, behavior_ranker,
                     train_set, cm, sample_iteration, CAPACITY)
         ndcg_scores, q1_values, q2_values, target_q1_values, \
             target_q2_values, actor_losses, critic_losses = run(
@@ -147,7 +149,7 @@ if __name__ == "__main__":
 
     END_POS = 10
     FEATURE_SIZE = args.feature_size
-    STATE_DIM = FEATURE_SIZE + END_POS
+    STATE_DIM = FEATURE_SIZE + END_POS * 2  # record previous rewards (cascade) and position (position)
     MAX_ACTION = 1.0  # after normalization
     BATCH_SIZE = 256
     NUM_INTERACTION = 100000

@@ -4,16 +4,13 @@ import numpy as np
 from ranker.AbstractRanker import AbstractRanker
 
 class RandomRanker(AbstractRanker):
-    def __init__(self, 
-                num_features):
-        
+    def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     def update_policy(self):
         pass
 
-    def get_query_result_list(self, dataset, query, seed):
-        np.random.seed(seed)
+    def get_query_result_list(self, dataset, query):
         docid_list = np.array(dataset.get_candidate_docids_by_query(query),dtype=np.int32)
         np.random.shuffle(docid_list)
         return docid_list
