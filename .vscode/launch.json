@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/2008_mq_dataset",
-                    "--output_fold", "results/MQ2008/BCQ", 
+                    "--output_fold", "results_position/MQ2008/DQN", 
                     "--rel_level", "3", 
                     "--feature_size", "46",
                     "--sample_iter", "1"]

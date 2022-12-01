@@ -23,9 +23,10 @@ def dataCollect(state_dim,
             qid = query_set[ind]
             print(f"index {query_count} qid {qid} memory status {len(memory)}/{capacity}")
             result_list = ranker.get_query_result_list(trainset, qid)
+            # print(f"result list: {result_list}")
             clicked_doces, click_labels, _ = click_model.simulate(qid, result_list, trainset)
-            if len(clicked_doces) == 0:
-                continue
+            # print(f"click doc: {clicked_doces}")
+            # print(f"click label: {click_labels}")
 
             state = np.zeros(state_dim, dtype=np.float32)
             next_state = np.zeros(state_dim, dtype=np.float32)
