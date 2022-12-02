@@ -143,15 +143,15 @@ if __name__ == "__main__":
     DISCOUNT = 0.9
     TAU = 0.005
     LR = 1e-3
-    # LOAD = False
-    LOAD = True
-    # SAVE = True
-    SAVE = False
+    LOAD = False
+    # LOAD = True
+    SAVE = True
+    # SAVE = False
     NORMALIZE = True
 
-    # click_models = ["informational", "perfect", "navigational"]
+    click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]
-    click_models = ["perfect"]
+    # click_models = ["perfect"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold

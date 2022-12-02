@@ -119,7 +119,7 @@ def job(model_type,
             ranker.load_ranker(
                 f'{output_fold}/fold{f}/{model_type}_run{r}_ndcg/')
         dataCollect(state_dim, action_dim, memory, behavior_ranker,
-                    train_set, cm, sample_iteration, CAPACITY)
+                    train_set, cm, sample_iteration, CAPACITY, END_POS)
         ndcg_scores, q1_values, q2_values, target_q1_values, \
             target_q2_values, actor_losses, critic_losses = run(
                 test_set, ranker, memory, NUM_INTERACTION, END_POS)
@@ -164,9 +164,9 @@ if __name__ == "__main__":
     SAVE = True
     NORMALIZE = True
 
-    # click_models = ["informational", "perfect", "navigational"]
+    click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]
-    click_models = ["perfect"]
+    # click_models = ["perfect"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold

@@ -25,4 +25,4 @@ In addition, the performance of trained ranker are stored after each training se
 
 To run the code, just run `.sh` files in `./OffpolicyLTR/run_{dataset_name}.sh`. 
 
-- If load or save model needed, set hyperparameter `LOAD` and `SAVE` True, respectly.
+- If load or save model needed, set hyperparameter `LOAD` and `SAVE` True, respectively.
