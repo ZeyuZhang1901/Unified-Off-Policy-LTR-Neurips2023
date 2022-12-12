@@ -1,0 +1,35 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+
+
+class Critic(nn.Module):
+    def __init__(self, state_dim, action_dim) -> None:
+        super().__init__()
+        self.ln1 = nn.Linear(state_dim + action_dim, 250)
+        self.ln2 = nn.Linear(250, 250)
+        self.ln3 = nn.Linear(250, 1)
+
+    def forward(self, state, action):
+        q1 = F.relu(self.ln1(torch.cat([state, action], dim=1)))
+        q1 = F.relu(self.ln2(q1))
+        q1 = self.ln3(q1)
+        return q1
+
+
+class Actor(nn.Module):
+    def __init__(self, state_dim, action_dim) -> None:
+        super().__init__()
+        self.ln1 = nn.Linear(state_dim + action_dim, 250)
+        self.ln2 = nn.Linear(250, 250)
+        self.ln3 = nn.Linear(250, 1)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, state, actions, mask):
+        state = torch.repeat_interleave(state, actions.shape[0], 0)
+        scores = F.relu(self.ln1(torch.cat([state, actions], dim=1)))
+        scores = F.relu(self.ln2(scores))
+        prob = self.softmax(self.ln3(scores).reshape(-1))
+        index = (prob * mask).argmax()
+        return index, actions[index], prob
