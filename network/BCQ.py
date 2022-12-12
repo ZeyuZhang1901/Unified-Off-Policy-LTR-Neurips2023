@@ -5,12 +5,13 @@ import numpy as np
 
 
 class Actor(nn.Module):
-    def __init__(self,
-                 state_dim,
-                 action_dim,
-                 max_action,  # if normalized, set 1
-                 phi=0.05  # max perturbation hyperparameter for BCQ
-                 ) -> None:
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        max_action,  # if normalized, set 1
+        phi=0.05,  # max perturbation hyperparameter for BCQ
+    ) -> None:
         super().__init__()
         self.ln1 = nn.Linear(state_dim + action_dim, 250)
         self.ln2 = nn.Linear(250, 250)
@@ -27,10 +28,7 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self,
-                 state_dim,
-                 action_dim
-                 ) -> None:
+    def __init__(self, state_dim, action_dim) -> None:
         super().__init__()
         self.ln1 = nn.Linear(state_dim + action_dim, 250)
         self.ln2 = nn.Linear(250, 250)
@@ -58,12 +56,13 @@ class Critic(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self,
-                 state_dim,
-                 action_dim,
-                 latent_dim,
-                 max_action,
-                 ) -> None:
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        latent_dim,
+        max_action,
+    ) -> None:
         super().__init__()
         self.e1 = nn.Linear(state_dim + action_dim, 750)
         self.e2 = nn.Linear(750, 750)
@@ -76,7 +75,7 @@ class VAE(nn.Module):
 
         self.max_action = max_action
         self.latent_dim = latent_dim
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def forward(self, state, action):
         z = F.relu(self.e1(torch.cat([state, action], dim=1)))
@@ -94,8 +93,11 @@ class VAE(nn.Module):
     def decode(self, state, z=None):
         # when sampling from VAE, the latent vector is clipped
         if z is None:
-            z = torch.randn((state.shape[0], self.latent_dim)).to(
-                self.device).clamp(-0.5, 0.5)
+            z = (
+                torch.randn((state.shape[0], self.latent_dim))
+                .to(self.device)
+                .clamp(-0.5, 0.5)
+            )
 
         a = F.relu(self.d1(torch.cat([state, z], dim=1)))
         a = F.relu(self.d2(a))
