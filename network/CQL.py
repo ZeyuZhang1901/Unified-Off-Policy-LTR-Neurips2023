@@ -22,6 +22,14 @@ class Critic(nn.Module):
         q1 = self.ln3(q1)
         return q1
 
+    def get_all_actions_q(self, state, candidates, mask):
+        candidates = candidates * mask.reshape(-1, 1)
+        state = torch.repeat_interleave(state, candidates.shape[0], 0)
+        scores = F.relu(self.ln1(torch.cat([state, candidates], dim=1)))
+        scores = F.relu(self.ln2(scores))
+        scores = self.ln3(scores)
+        return scores.reshape(-1)
+
 
 class Actor(nn.Module):
     def __init__(

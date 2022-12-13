@@ -5,7 +5,7 @@ sys.path.append("../")
 from torch.utils.tensorboard import SummaryWriter
 from utils import evl_tool
 from network.Memory import Memory
-from ranker.BCQRanker import BCQRanker
+from ranker.CQLRanker import CQLRanker
 from ranker.RandomRanker import RandomRanker
 from clickModel.CM import CM
 from clickModel.PBM import PBM
@@ -32,26 +32,24 @@ def run(test_set, ranker, memory, num_iteration, end_pos):
     ndcg_scores = []
     q1_values = []
     q2_values = []
-    target_q1_values = []
-    target_q2_values = []
+    target_q_values = []
     actor_losses = []
     critic_losses = []
 
     for i in range(num_iteration):
-        q1, q2, target_q1, target_q2, critic_loss, actor_loss = ranker.update_policy(
-            memory
-        )
+        q1, q2, target_q, actor_loss, critic_loss = ranker.update_policy(memory)
         q1_values.append(q1)
         q2_values.append(q2)
-        target_q1_values.append(target_q1)
-        target_q2_values.append(target_q2)
-        critic_losses.append(critic_loss)
+        target_q_values.append(target_q)
         actor_losses.append(actor_loss)
+        critic_losses.append(critic_loss)
 
         print(f"iter {i+1}: ")
-        print(f"q1_value {q1} q2_value {q2}")
-        print(f"target_q1_value {target_q1} target_q2_value {target_q2}")
-        print(f"actor_loss {actor_loss} critic_loss {critic_loss}")
+        print(f"q1_value {q1}")
+        print(f"q2_value {q2}")
+        print(f"target_q_value {target_q} ")
+        print(f"actor_loss {actor_loss}")
+        print(f"critic_loss {critic_loss}")
         # evaluate 100 times in one train session
         if i % int(num_iteration / 100) == 0:
             all_result = ranker.get_all_query_result_list(test_set)
@@ -63,8 +61,7 @@ def run(test_set, ranker, memory, num_iteration, end_pos):
         ndcg_scores,
         q1_values,
         q2_values,
-        target_q1_values,
-        target_q2_values,
+        target_q_values,
         actor_losses,
         critic_losses,
     )
@@ -116,16 +113,15 @@ def job(
         )
         print("DQN fold{} {}  run{} start!".format(f, model_type, r))
 
-        ranker = BCQRanker(
+        ranker = CQLRanker(
             state_dim,
             action_dim,
-            MAX_ACTION,
             BATCH_SIZE,
+            train_set,
             LR,
             DISCOUNT,
             TAU,
-            LAMBDA,
-            PHI,
+            use_cql=USE_CQL,
         )
         behavior_ranker = RandomRanker()
         if load:
@@ -145,8 +141,7 @@ def job(
             ndcg_scores,
             q1_values,
             q2_values,
-            target_q1_values,
-            target_q2_values,
+            target_q_values,
             actor_losses,
             critic_losses,
         ) = run(test_set, ranker, memory, NUM_INTERACTION, END_POS)
@@ -172,11 +167,7 @@ def job(
             writer.add_scalars(
                 "policy", {"q1": q1_values[j], "q2": q2_values[j]}, j + 1
             )
-            writer.add_scalars(
-                "target",
-                {"target_q1": target_q1_values[j], "target_q2": target_q2_values[j]},
-                j + 1,
-            )
+            writer.add_scalar("target", target_q_values[j], j + 1)
             writer.add_scalars(
                 "avg_loss",
                 {"actor_loss": actor_losses[i], "critic_loss": critic_losses[j]},
@@ -194,19 +185,17 @@ if __name__ == "__main__":
     STATE_DIM = (
         FEATURE_SIZE + END_POS * 2
     )  # record previous rewards (cascade) and position (position)
-    MAX_ACTION = 1.0  # after normalization
     BATCH_SIZE = 256
     NUM_INTERACTION = 100000
     SAMPLE_ITERATION = args.sample_iter
     CAPACITY = 3e6
     DISCOUNT = 0.9
     TAU = 0.005
-    LAMBDA = 0.75  # target calculation
-    PHI = 0.05  # perturb range
     LR = 1e-3
     LOAD = False
     SAVE = True
     NORMALIZE = True
+    USE_CQL = False
 
     click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]
