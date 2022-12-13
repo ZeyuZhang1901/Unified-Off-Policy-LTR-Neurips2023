@@ -51,7 +51,7 @@ class Actor(nn.Module):
         # sample action from prob
         dist = Categorical(prob / prob.sum())
         index = dist.sample()
-        return index, candidates[index], prob
+        return index, candidates[index], prob[index]
 
 
 class Scalar(nn.Module):

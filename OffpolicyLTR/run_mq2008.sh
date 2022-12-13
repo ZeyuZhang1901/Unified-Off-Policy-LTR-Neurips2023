@@ -1,6 +1,6 @@
 #!/bin/bash
 
-dataset_fold="/home/zeyuzhang/LearningtoRank/datasets/2008_mq_dataset"
+dataset_fold="/home/zeyuzhang/LearningtoRank/datasets/MQ2008"
 rel_level=3
 feature_size=46
 sample_iter=200

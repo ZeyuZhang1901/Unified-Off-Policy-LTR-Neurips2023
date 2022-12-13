@@ -72,17 +72,14 @@ class CQLRanker(AbstractRanker):
         new_actions = torch.zeros(self.batch_size, self.action_dim).to(self.device)
         new_indexs = torch.zeros(self.batch_size, dtype=torch.int).to(self.device)
         new_probs = torch.zeros(self.batch_size, dtype=torch.float32).to(self.device)
-        probs = []
         for i in range(self.batch_size):
             candidates = torch.tensor(
                 self.train_set.get_all_features_by_query(batch.qid[i])
             ).to(self.device)
             chosen = torch.tensor(batch.chosen[i]).to(self.device)
-            new_indexs[i], new_actions[i], prob = self.actor(
+            new_indexs[i], new_actions[i], new_probs[i] = self.actor(
                 states[i], candidates, chosen
             )
-            new_probs[i] = prob[new_indexs[i]]
-            probs.append(prob)
 
         # tuning alpha (automatic entropy tuning)
         alpha_loss = -(self.log_alpha() * torch.log(new_probs).detach()).mean()
@@ -104,7 +101,6 @@ class CQLRanker(AbstractRanker):
         new_next_probs = torch.zeros(self.batch_size, dtype=torch.float32).to(
             self.device
         )
-        next_probs = []
         for i in range(self.batch_size):
             candidates = torch.tensor(
                 self.train_set.get_all_features_by_query(batch.qid[i])
@@ -114,11 +110,10 @@ class CQLRanker(AbstractRanker):
                 batch.qid[i], actions[i]
             )
             chosen[index] = False
-            new_next_indexs[i], new_next_actions[i], next_prob = self.actor(
+            new_next_indexs[i], new_next_actions[i], new_next_probs[i] = self.actor(
                 nextstates[i], candidates, chosen
             )
-            new_next_probs[i] = prob[new_indexs[i]]
-            next_probs.append(next_prob)
+
         target_q_values = torch.min(
             self.target_qf1(nextstates, new_next_actions),
             self.target_qf2(nextstates, new_next_actions),

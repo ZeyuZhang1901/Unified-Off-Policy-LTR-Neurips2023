@@ -49,5 +49,5 @@ def dataCollect(state_dim,
                             torch.tensor([[done]], dtype=torch.int),
                             torch.tensor(chosen),
                             qid)
-                chosen[int(result_list[j])] = False        
+                chosen[int(result_list[j])] = False
             
