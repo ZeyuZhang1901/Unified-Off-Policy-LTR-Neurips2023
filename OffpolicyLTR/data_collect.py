@@ -34,13 +34,20 @@ def dataCollect(state_dim,
             for j in range(len(result_list)):
                 if j>=end_pos:  # only record tuples before end_pos
                     break
+                # action
                 action = trainset.get_features_by_query_and_docid(qid, result_list[j]).astype(np.float32)
+                # state
                 state = next_state
+                # reward
                 reward = 1/np.log2(j+2) if click_labels[j] == 1 else 0
-                next_state[:action_dim] = action + j/(j+1)*state[:action_dim]
+                # next state
+                # next_state[:action_dim] = action + j/(j+1)*state[:action_dim]
                 next_state[action_dim+j] = reward
                 next_state[action_dim+end_pos+j] = 1  # one-hot, indicate current position
-                done = 1 if j==len(result_list)-1 else 0
+                if j>0:
+                    next_state[action_dim+end_pos+j-1] = 0 
+                # done
+                done = 1 if j==len(result_list)-1 or j==end_pos-1 else 0
 
                 memory.push(torch.tensor(state, dtype=torch.float32).reshape(1,-1),
                             torch.tensor(action, dtype=torch.float32).reshape(1,-1),

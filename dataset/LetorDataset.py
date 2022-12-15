@@ -1,4 +1,5 @@
 from dataset.AbstractDataset import AbstractDataset
+import torch
 import numpy as np
 import math
 import os
@@ -7,14 +8,14 @@ import pickle
 
 
 class LetorDataset(AbstractDataset):
-
-    def __init__(self,
-                 path,
-                 feature_size,
-                 query_level_norm=False,
-                 binary_label=0,
-                 cache_root=None
-                 ):
+    def __init__(
+        self,
+        path,
+        feature_size,
+        query_level_norm=False,
+        binary_label=0,
+        cache_root=None,
+    ):
         super().__init__(path, feature_size, query_level_norm)
         self._binary_label = binary_label
         self._comments = {}
@@ -28,15 +29,15 @@ class LetorDataset(AbstractDataset):
             else:
                 self._load_data()
                 cache_name = f"{hashlib.md5(path.encode()).hexdigest()}.pkl"
-                file_path = f'./{cache_root}/{cache_name}'
+                file_path = f"./{cache_root}/{cache_name}"
 
-                with open(file_path, 'wb') as f:
+                with open(file_path, "wb") as f:
                     pickle.dump(self, f)
                 print(f"Cached the array to {file_path}")
         else:
             self._load_data()
 
-    def from_path(self, path: str, cache_root: str) -> 'LetorDataset':
+    def from_path(self, path: str, cache_root: str) -> "LetorDataset":
         """
         Constructs a dataset by reading form a disk
         :param root_path: A path to the root that contains (Fold1, Fold2, ...)
@@ -47,10 +48,10 @@ class LetorDataset(AbstractDataset):
         """
 
         cache_name = f"{hashlib.md5(path.encode()).hexdigest()}.pkl"
-        file_path = f'./{cache_root}/{cache_name}'
+        file_path = f"./{cache_root}/{cache_name}"
         if os.path.exists(file_path):
             print(f"Loading from cache file {file_path}")
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 data = pickle.load(f)
             return data
         else:
@@ -63,7 +64,7 @@ class LetorDataset(AbstractDataset):
             current_query = None
             for line in fin:
                 cols = line.strip().split()
-                query = cols[1].split(':')[1]
+                query = cols[1].split(":")[1]
                 if query == current_query:
                     docid = len(self._query_get_docids[query])
                     old_query = True
@@ -84,9 +85,13 @@ class LetorDataset(AbstractDataset):
                         self._comments[query] = []
                     self._comments[query].append(comments_part[1].strip())
 
-                relevence = float(cols[0])  # Sometimes the relevance label can be a float.
+                relevence = float(
+                    cols[0]
+                )  # Sometimes the relevance label can be a float.
                 if relevence.is_integer():
-                    relevence = int(relevence)  # But if it is indeed an int, cast it into one.
+                    relevence = int(
+                        relevence
+                    )  # But if it is indeed an int, cast it into one.
                 if self._binary_label != 0:
                     if relevence >= self._binary_label:
                         relevence = 1
@@ -96,7 +101,7 @@ class LetorDataset(AbstractDataset):
                 features = [0] * self._feature_size
 
                 for i in range(2, len(cols)):
-                    feature_id = cols[i].split(':')[0]
+                    feature_id = cols[i].split(":")[0]
 
                     if not feature_id.isdigit():
                         if feature_id[0] == "#":
@@ -105,7 +110,7 @@ class LetorDataset(AbstractDataset):
                         break
 
                     feature_id = int(feature_id) - 1
-                    feature_value = float(cols[i].split(':')[1])
+                    feature_value = float(cols[i].split(":")[1])
                     if math.isnan(feature_value):
                         feature_value = 0
 
@@ -117,7 +122,9 @@ class LetorDataset(AbstractDataset):
                 if old_query:
                     self._query_docid_get_features[query][docid] = np.array(features)
                     self._query_get_docids[query].append(docid)
-                    self._query_get_all_features[query] = np.vstack((self._query_get_all_features[query], features))
+                    self._query_get_all_features[query] = np.vstack(
+                        (self._query_get_all_features[query], features)
+                    )
                     self._query_docid_get_rel[query][docid] = relevence
                     self._query_relevant_labels[query].append(relevence)
                 else:
@@ -139,11 +146,14 @@ class LetorDataset(AbstractDataset):
             max = np.amax(query_features, axis=0)
             safe_ind = max - min != 0
             norm[:, safe_ind] = (query_features[:, safe_ind] - min[safe_ind]) / (
-                    max[safe_ind] - min[safe_ind])
+                max[safe_ind] - min[safe_ind]
+            )
             self._query_get_all_features[query] = norm
 
             for docid in self._query_docid_get_features[query].keys():
-                self._query_docid_get_features[query][docid] = self._query_get_all_features[query][docid]
+                self._query_docid_get_features[query][
+                    docid
+                ] = self._query_get_all_features[query][docid]
 
     def update_relevance_label(self, qrel_dic: dict):
         for qid in self._query_docid_get_rel.keys():
@@ -185,7 +195,7 @@ class LetorDataset(AbstractDataset):
         # q-d pair dictionary
         qrel_dic = {}
 
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             for line in f:
                 qid, _, docid, rel = line.strip().split()
                 if qid in qrel_dic.keys():
@@ -277,7 +287,7 @@ class LetorDataset(AbstractDataset):
             train_path = "{}/Fold{}/train.txt".format(path, i + 1)
             test_queries = query_chunks[i]
             train_chunks = query_chunks[:i]
-            train_chunks.extend(query_chunks[i + 1:])
+            train_chunks.extend(query_chunks[i + 1 :])
             train_queries = np.concatenate(train_chunks)
 
             self.write_by_queries(test_path, test_queries)
@@ -298,7 +308,7 @@ class LetorDataset(AbstractDataset):
         query_dic = {}
         for feature_id in range(num_feature):
             # feature id in standard letor datasets start from 1.
-            with open(os.path.join(input_folder, files[feature_id]), 'r') as f:
+            with open(os.path.join(input_folder, files[feature_id]), "r") as f:
                 for line in f:
                     qid, _, docid, rank, score, rname = line.strip().split()
                     if qid in query_dic.keys():
@@ -344,6 +354,9 @@ class LetorDataset(AbstractDataset):
 
     def get_docid_by_query_and_feature(self, query, action):
         candidates = self._query_get_all_features[query].astype(np.float32)
+        if type(action) == torch.Tensor:
+            if action.is_cuda:
+                action = action.cpu()
         action = np.array(action, dtype=np.float32)
         for i in range(candidates.shape[0]):
             if np.array_equal(candidates[i], action):

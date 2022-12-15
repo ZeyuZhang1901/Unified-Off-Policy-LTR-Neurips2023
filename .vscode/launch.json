@@ -15,7 +15,7 @@
                 "--dataset_fold",
                 "/home/zeyuzhang/LearningtoRank/datasets/MQ2008",
                 "--output_fold",
-                "results/MQ2008/DQN",
+                "results_test/MQ2008/DQN",
                 "--rel_level",
                 "3",
                 "--feature_size",

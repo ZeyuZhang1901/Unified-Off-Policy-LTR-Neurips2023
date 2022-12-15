@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 from torch.distributions.categorical import Categorical
 
 
@@ -47,11 +46,18 @@ class Actor(nn.Module):
         state = torch.repeat_interleave(state, candidates.shape[0], 0)
         scores = F.relu(self.ln1(torch.cat([state, candidates], dim=1)))
         scores = F.relu(self.ln2(scores))
-        prob = self.softmax(self.ln3(scores).reshape(-1)) * mask
+        scores = self.ln3(scores).reshape(-1)
+        prob = F.softmax(scores) * mask
+        # if torch.isnan(prob).any():
+        #     print(scores)
+        #     assert "nan bug"
         # sample action from prob
-        dist = Categorical(prob / prob.sum())
-        index = dist.sample()
-        return index, candidates[index], prob[index]
+        if prob.sum() == 0:  # if no action to choose
+            return 0, candidates[0], 0.0
+        else:
+            dist = Categorical(prob / prob.sum())
+            index = dist.sample()
+            return index, candidates[index], prob[index]
 
 
 class Scalar(nn.Module):

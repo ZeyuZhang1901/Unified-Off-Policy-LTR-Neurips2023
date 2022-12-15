@@ -14,8 +14,12 @@ from dataset import LetorDataset
 
 import multiprocessing as mp
 import numpy as np
+import random
+import torch
 
 np.random.seed(1958)
+random.seed(1958)
+torch.manual_seed(1958)
 import argparse
 
 parser = argparse.ArgumentParser()

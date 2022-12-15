@@ -14,8 +14,13 @@ from dataset import LetorDataset
 
 import multiprocessing as mp
 import numpy as np
+import random
+import torch
 
 np.random.seed(1958)
+random.seed(1958)
+torch.manual_seed(1958)
+
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -191,11 +196,11 @@ if __name__ == "__main__":
     CAPACITY = 3e6
     DISCOUNT = 0.9
     TAU = 0.005
-    LR = 1e-3
+    LR = 1e-4
     LOAD = False
     SAVE = True
     NORMALIZE = True
-    USE_CQL = False
+    USE_CQL = True
 
     click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]

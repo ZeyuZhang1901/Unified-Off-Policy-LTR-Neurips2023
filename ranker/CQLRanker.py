@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import copy
@@ -26,15 +25,14 @@ class CQLRanker(AbstractRanker):
         cql_min_q_weight=1,  # param before punishment item
         use_cql=False,
     ):
-        super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # actor part: get action and probability distribution
         self.actor = Actor(state_dim, action_dim).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
         # critic part: get scores for each state-action pair
-        self.qf1 = Critic(state_dim, action_dim)
+        self.qf1 = Critic(state_dim, action_dim).to(self.device)
         self.target_qf1 = copy.deepcopy(self.qf1)
-        self.qf2 = Critic(state_dim, action_dim)
+        self.qf2 = Critic(state_dim, action_dim).to(self.device)
         self.target_qf2 = copy.deepcopy(self.qf2)
         self.critic_optimizer = torch.optim.Adam(
             list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=lr
@@ -61,10 +59,8 @@ class CQLRanker(AbstractRanker):
         trainsitions = memory.sample(self.batch_size)
         batch = Transition(*zip(*trainsitions))
         states = torch.cat(batch.state).to(self.device)
-        # state_batch = torch.zeros_like(torch.cat(batch.state), dtype=torch.float32).to(self.device)
         actions = torch.cat(batch.action).to(self.device)
         nextstates = torch.cat(batch.next_state).to(self.device)
-        # next_state_batch = torch.zeros_like(torch.cat(batch.next_state), dtype=torch.float32).to(self.device)
         rewards = torch.cat(batch.reward).to(self.device)
         dones = torch.cat(batch.done).to(self.device)
 
@@ -73,16 +69,19 @@ class CQLRanker(AbstractRanker):
         new_indexs = torch.zeros(self.batch_size, dtype=torch.int).to(self.device)
         new_probs = torch.zeros(self.batch_size, dtype=torch.float32).to(self.device)
         for i in range(self.batch_size):
-            candidates = torch.tensor(
-                self.train_set.get_all_features_by_query(batch.qid[i])
-            ).to(self.device)
-            chosen = torch.tensor(batch.chosen[i]).to(self.device)
+            candidates = (
+                torch.from_numpy(self.train_set.get_all_features_by_query(batch.qid[i]))
+                .clone()
+                .to(torch.float32)
+                .to(self.device)
+            )
+            chosen = batch.chosen[i].clone().to(self.device)
             new_indexs[i], new_actions[i], new_probs[i] = self.actor(
-                states[i], candidates, chosen
+                states[i].unsqueeze(0), candidates, chosen
             )
 
         # tuning alpha (automatic entropy tuning)
-        alpha_loss = -(self.log_alpha() * torch.log(new_probs).detach()).mean()
+        alpha_loss = -(self.log_alpha() * torch.log(new_probs + 1e-9).detach()).mean()
         alpha = self.log_alpha().exp()
 
         # actor loss
@@ -90,9 +89,7 @@ class CQLRanker(AbstractRanker):
             self.qf1(states, new_actions),
             self.qf2(states, new_actions),
         )
-        actor_loss = (alpha * torch.log(new_probs) - q_new_actions).mean()
-
-        # critic loss (q functions)
+        actor_loss = (alpha * torch.log(new_probs + 1e-9) - q_new_actions).mean()
         q1_pred = self.qf1(states, actions)
         q2_pred = self.qf2(states, actions)
 
@@ -102,16 +99,19 @@ class CQLRanker(AbstractRanker):
             self.device
         )
         for i in range(self.batch_size):
-            candidates = torch.tensor(
-                self.train_set.get_all_features_by_query(batch.qid[i])
-            ).to(self.device)
-            chosen = torch.tensor(batch.chosen[i]).to(self.device)
+            candidates = (
+                torch.from_numpy(self.train_set.get_all_features_by_query(batch.qid[i]))
+                .clone()
+                .to(torch.float32)
+                .to(self.device)
+            )
+            chosen = batch.chosen[i].clone().to(self.device)
             index = self.train_set.get_docid_by_query_and_feature(
                 batch.qid[i], actions[i]
             )
             chosen[index] = False
             new_next_indexs[i], new_next_actions[i], new_next_probs[i] = self.actor(
-                nextstates[i], candidates, chosen
+                nextstates[i].unsqueeze(0), candidates, chosen
             )
 
         target_q_values = torch.min(
@@ -134,16 +134,17 @@ class CQLRanker(AbstractRanker):
             )
             for i in range(self.batch_size):
                 candidates = torch.tensor(
-                    self.train_set.get_all_features_by_query(batch.qid[i])
+                    self.train_set.get_all_features_by_query(batch.qid[i]),
+                    dtype=torch.float32,
                 ).to(self.device)
                 state_q1s = self.qf1.get_all_actions_q(
-                    states[i], candidates, batch.chosen[i].to(self.device)
+                    states[i].unsqueeze(0), candidates, batch.chosen[i].to(self.device)
                 )
                 state_q2s = self.qf2.get_all_actions_q(
-                    states[i], candidates, batch.chosen[i].to(self.device)
+                    states[i].unsqueeze(0), candidates, batch.chosen[i].to(self.device)
                 )
-                cql_cat_q1s[i] = torch.logsumexp(state_q1s)
-                cql_cat_q2s[i] = torch.logsumexp(state_q2s)
+                cql_cat_q1s[i] = torch.logsumexp(state_q1s, 0)
+                cql_cat_q2s[i] = torch.logsumexp(state_q2s, 0)
             cql_qf1_diff = (cql_cat_q1s - q1_pred).mean()
             cql_qf2_diff = (cql_cat_q2s - q2_pred).mean()
             # punishment items
@@ -192,7 +193,6 @@ class CQLRanker(AbstractRanker):
                 state = torch.from_numpy(state)
             if type(candidates) == np.ndarray:
                 candidates = torch.from_numpy(candidates)
-            state = state.expand(candidates.shape[0], -1).to(self.device)
             candidates = candidates.to(self.device)
             index, action, _ = self.actor(state, candidates, mask)
             return index, action
@@ -211,11 +211,16 @@ class CQLRanker(AbstractRanker):
             state = next_state
             # action
             docid, action = self.selectAction(
-                state=state.reshape(1, -1), candidates=candidates, mask=mask
+                state=torch.from_numpy(state).reshape(1, -1).to(self.device),
+                candidates=torch.from_numpy(candidates).to(self.device),
+                mask=mask,
             )
+            action = action.cpu().numpy()
             # reward
-            relevance = dataset.get_relevance_label_by_query_and_docid(query, docid)
-            ranklist[pos] = docid
+            relevance = dataset.get_relevance_label_by_query_and_docid(
+                query, int(docid)
+            )
+            ranklist[pos] = int(docid)
             # next state
             next_state[: self.action_dim] = action + pos * state[: self.action_dim] / (
                 pos + 1
