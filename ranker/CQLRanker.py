@@ -75,7 +75,7 @@ class CQLRanker(AbstractRanker):
                 .to(torch.float32)
                 .to(self.device)
             )
-            chosen = batch.chosen[i].clone().to(self.device)
+            chosen = batch.chosen[i].to(self.device)
             new_indexs[i], new_actions[i], new_probs[i] = self.actor(
                 states[i].unsqueeze(0), candidates, chosen
             )
@@ -90,14 +90,12 @@ class CQLRanker(AbstractRanker):
             self.qf2(states, new_actions),
         )
         actor_loss = (alpha * torch.log(new_probs + 1e-9) - q_new_actions).mean()
+
+        # critic loss
         q1_pred = self.qf1(states, actions)
         q2_pred = self.qf2(states, actions)
 
-        new_next_actions = torch.zeros(self.batch_size, self.action_dim).to(self.device)
-        new_next_indexs = torch.zeros(self.batch_size, dtype=torch.int).to(self.device)
-        new_next_probs = torch.zeros(self.batch_size, dtype=torch.float32).to(
-            self.device
-        )
+        new_next_actions = []
         for i in range(self.batch_size):
             candidates = (
                 torch.from_numpy(self.train_set.get_all_features_by_query(batch.qid[i]))
@@ -105,22 +103,27 @@ class CQLRanker(AbstractRanker):
                 .to(torch.float32)
                 .to(self.device)
             )
-            chosen = batch.chosen[i].clone().to(self.device)
+            chosen = batch.chosen[i].to(self.device)
             index = self.train_set.get_docid_by_query_and_feature(
                 batch.qid[i], actions[i]
             )
             chosen[index] = False
-            new_next_indexs[i], new_next_actions[i], new_next_probs[i] = self.actor(
-                nextstates[i].unsqueeze(0), candidates, chosen
-            )
+            if not dones[i]:
+                _, new_next_action, _ = self.actor(
+                    nextstates[i].unsqueeze(0), candidates, chosen
+                )
+                new_next_actions.append(new_next_action.unsqueeze(0))
+        new_next_actions = torch.cat(new_next_actions).to(self.device)
 
+        nextstates = nextstates[dones.sum(dim=1) == 0]
+        rewards = rewards[dones.sum(dim=1) == 0]
         target_q_values = torch.min(
             self.target_qf1(nextstates, new_next_actions),
             self.target_qf2(nextstates, new_next_actions),
         )
-        td_target = rewards + (1 - dones) * self.discount * target_q_values
-        qf1_loss = F.mse_loss(q1_pred, td_target.detach())
-        qf2_loss = F.mse_loss(q2_pred, td_target.detach())
+        td_target = rewards + self.discount * target_q_values
+        qf1_loss = F.mse_loss(q1_pred[dones.sum(dim=1) == 0], td_target.detach())
+        qf2_loss = F.mse_loss(q2_pred[dones.sum(dim=1) == 0], td_target.detach())
 
         # add CQL term to qf loss
         if not self.use_cql:
@@ -200,7 +203,8 @@ class CQLRanker(AbstractRanker):
     def get_query_result_list(self, dataset, query):
         candidates = dataset.get_all_features_by_query(query).astype(np.float32)
         docid_list = dataset.get_candidate_docids_by_query(query)
-        ndoc = len(docid_list)
+        end_pos = int((self.state_dim - self.action_dim) / 2)
+        ndoc = len(docid_list) if len(docid_list) < end_pos else end_pos
         ranklist = np.zeros(ndoc, dtype=np.int32)
 
         state = np.zeros(self.state_dim, dtype=np.float32)
@@ -225,10 +229,13 @@ class CQLRanker(AbstractRanker):
             next_state[: self.action_dim] = action + pos * state[: self.action_dim] / (
                 pos + 1
             )
-            if self.action_dim + pos < self.state_dim:
+            if pos < end_pos:
                 next_state[self.action_dim + pos] = (
                     1 / np.log2(pos + 2) if relevance > 0 else 0
                 )
+                next_state[self.action_dim + end_pos + pos] = 1
+                if pos > 0:
+                    next_state[self.action_dim + end_pos + pos - 1] = 0
             # renew mask
             mask[docid] = False
 

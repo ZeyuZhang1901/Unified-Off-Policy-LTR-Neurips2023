@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
+import numpy as np
 
 
 class Critic(nn.Module):
@@ -47,17 +48,20 @@ class Actor(nn.Module):
         scores = F.relu(self.ln1(torch.cat([state, candidates], dim=1)))
         scores = F.relu(self.ln2(scores))
         scores = self.ln3(scores).reshape(-1)
-        prob = F.softmax(scores) * mask
-        # if torch.isnan(prob).any():
-        #     print(scores)
-        #     assert "nan bug"
+        prob = F.softmax(scores, dim=0) * mask
         # sample action from prob
-        if prob.sum() == 0:  # if no action to choose
-            return 0, candidates[0], 0.0
-        else:
-            dist = Categorical(prob / prob.sum())
-            index = dist.sample()
+        if not prob.sum() == 0:  # in case no action to choose
+            prob = prob / prob.sum()
+            # t = prob.detach().cpu().numpy()
+            # print(t)
+            index = np.random.choice(
+                list(range(len(prob))), p=prob.detach().cpu().numpy()
+            )
             return index, candidates[index], prob[index]
+        else:
+            print(mask)
+            if mask.sum() != 0:
+                print("debug start!")
 
 
 class Scalar(nn.Module):

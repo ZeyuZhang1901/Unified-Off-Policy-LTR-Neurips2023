@@ -36,7 +36,8 @@ args = parser.parse_args()
 
 def run(train_set, test_set, ranker, memory, num_iteration, end_pos):
 
-    ndcg_scores = []
+    train_ndcg_scores = []
+    test_ndcg_scores = []
     q_values = []
     target_q_values = []
     losses = []
@@ -50,12 +51,18 @@ def run(train_set, test_set, ranker, memory, num_iteration, end_pos):
 
         # evaluate
         if i % int(num_iteration / 100) == 0:
+            # trainset
+            all_result = ranker.get_all_query_result_list(train_set)
+            ndcg = evl_tool.average_ndcg_at_k(train_set, all_result, end_pos)
+            train_ndcg_scores.append(ndcg)
+            print(f"train eval {int((i+1)/100)} ndcg {ndcg}")
+            # testset
             all_result = ranker.get_all_query_result_list(test_set)
             ndcg = evl_tool.average_ndcg_at_k(test_set, all_result, end_pos)
-            ndcg_scores.append(ndcg)
-            print(f"eval {int((i+1)/100)} ndcg {ndcg}")
+            test_ndcg_scores.append(ndcg)
+            print(f"test eval {int((i+1)/100)} ndcg {ndcg}")
 
-    return ndcg_scores, q_values, target_q_values, losses
+    return train_ndcg_scores, test_ndcg_scores, q_values, target_q_values, losses
 
 
 # %%
@@ -96,15 +103,14 @@ def job(
             pc = [0.4, 0.7, 0.9]
             ps = [0.1, 0.3, 0.5]
 
-    # cm = PBM(pc, 1)
-    cm = CM(pc, 1)
+    cm = PBM(pc, 1)
+    # cm = CM(pc, 1)
 
     for r in range(1, 2):
         # np.random.seed(r)
         writer = SummaryWriter(
             "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r)
         )
-        print("DoubleDQN fold{} {}  run{} start!".format(f, model_type, r))
 
         ranker = DoubleDQNRanker(state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
         behavior_ranker = RandomRanker()
@@ -120,9 +126,13 @@ def job(
             sample_iteration,
             int(CAPACITY),
         )
-        ndcg_scores, q_values, target_q_values, losses = run(
-            train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS
-        )
+        (
+            train_ndcg_scores,
+            test_ndcg_scores,
+            q_values,
+            target_q_values,
+            losses,
+        ) = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
         if save:
             ranker.restore_ranker(f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/")
 
@@ -139,8 +149,10 @@ def job(
             end_pos=END_POS,
         )
         print(f"matrics record start!")
-        for i in range(len(ndcg_scores)):
-            writer.add_scalar("ndcg", ndcg_scores[i], i + 1)
+        for i in range(len(train_ndcg_scores)):
+            writer.add_scalar("train_ndcg", train_ndcg_scores[i], i + 1)
+        for i in range(len(test_ndcg_scores)):
+            writer.add_scalar("test_ndcg", test_ndcg_scores[i], i + 1)
         for j in range(len(losses)):
             writer.add_scalar("policy", q_values[j], j + 1)
             writer.add_scalar("target", target_q_values[j], j + 1)
@@ -157,7 +169,7 @@ if __name__ == "__main__":
         FEATURE_SIZE + END_POS * 2
     )  # record previous rewards (cascade) and position (position)
     BATCH_SIZE = 256
-    NUM_INTERACTION = 100000
+    NUM_INTERACTION = 30000
     SAMPLE_ITERATION = args.sample_iter
     CAPACITY = 3e6
     DISCOUNT = 0.9

@@ -75,7 +75,8 @@ class DQNRanker(AbstractRanker):
     def get_query_result_list(self, dataset, query):
         candidates = dataset.get_all_features_by_query(query).astype(np.float32)
         docid_list = dataset.get_candidate_docids_by_query(query)
-        ndoc = len(docid_list)
+        end_pos = int((self.state_dim - self.action_dim) / 2)
+        ndoc = len(docid_list) if len(docid_list) < end_pos else end_pos
         ranklist = np.zeros(ndoc, dtype=np.int32)
 
         state = np.zeros(self.state_dim, dtype=np.float32)
@@ -92,13 +93,16 @@ class DQNRanker(AbstractRanker):
             relevance = dataset.get_relevance_label_by_query_and_docid(query, docid)
             ranklist[pos] = docid
             # next state
-            next_state[: self.action_dim] = action + pos * state[: self.action_dim] / (
-                pos + 1
-            )
-            if self.action_dim + pos < self.state_dim:
-                next_state[self.action_dim + pos] = (
-                    1 / np.log2(pos + 2) if relevance > 0 else 0
-                )
+            # next_state[: self.action_dim] = action + pos * state[: self.action_dim] / (
+            #     pos + 1
+            # )
+            # if pos < end_pos:
+            #     next_state[self.action_dim + pos] = (
+            #         1 / np.log2(pos + 2) if relevance > 0 else 0
+            #     )
+            #     next_state[self.action_dim + end_pos + pos] = 1
+            #     if pos > 0:
+            #         next_state[self.action_dim + end_pos + pos - 1] = 0
             # delete chosen doc in candidates
             for i in range(candidates.shape[0]):
                 if np.array_equal(candidates[i], action):

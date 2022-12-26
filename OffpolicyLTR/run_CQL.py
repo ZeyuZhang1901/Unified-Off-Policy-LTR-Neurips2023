@@ -29,12 +29,14 @@ parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--rel_level", type=int, required=True)
 parser.add_argument("--sample_iter", type=int, required=True)
+parser.add_argument("--use_cql", type=bool, required=True)
 args = parser.parse_args()
 
 # %%
 def run(test_set, ranker, memory, num_iteration, end_pos):
 
-    ndcg_scores = []
+    train_ndcg_scores = []
+    test_ndcg_scores = []
     q1_values = []
     q2_values = []
     target_q_values = []
@@ -57,13 +59,20 @@ def run(test_set, ranker, memory, num_iteration, end_pos):
         print(f"critic_loss {critic_loss}")
         # evaluate 100 times in one train session
         if i % int(num_iteration / 100) == 0:
+            # trainset
+            all_result = ranker.get_all_query_result_list(train_set)
+            ndcg = evl_tool.average_ndcg_at_k(train_set, all_result, end_pos)
+            train_ndcg_scores.append(ndcg)
+            print(f"train eval {int((i+1)/100)} ndcg {ndcg}")
+            # testset
             all_result = ranker.get_all_query_result_list(test_set)
             ndcg = evl_tool.average_ndcg_at_k(test_set, all_result, end_pos)
-            ndcg_scores.append(ndcg)
-            print(f"eval {int((i+1)/100)} ndcg {ndcg}")
+            test_ndcg_scores.append(ndcg)
+            print(f"test eval {int((i+1)/100)} ndcg {ndcg}")
 
     return (
-        ndcg_scores,
+        train_ndcg_scores,
+        test_ndcg_scores,
         q1_values,
         q2_values,
         target_q_values,
@@ -116,7 +125,6 @@ def job(
         writer = SummaryWriter(
             "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r)
         )
-        print("DQN fold{} {}  run{} start!".format(f, model_type, r))
 
         ranker = CQLRanker(
             state_dim,
@@ -143,7 +151,8 @@ def job(
             END_POS,
         )
         (
-            ndcg_scores,
+            train_ndcg_scores,
+            test_ndcg_scores,
             q1_values,
             q2_values,
             target_q_values,
@@ -166,8 +175,10 @@ def job(
             end_pos=END_POS,
         )
         print(f"matrics record start!")
-        for i in range(len(ndcg_scores)):
-            writer.add_scalar("ndcg", ndcg_scores[i], i + 1)
+        for i in range(len(train_ndcg_scores)):
+            writer.add_scalar("train_ndcg", train_ndcg_scores[i], i + 1)
+        for i in range(len(test_ndcg_scores)):
+            writer.add_scalar("test_ndcg", test_ndcg_scores[i], i + 1)
         for j in range(len(q1_values)):
             writer.add_scalars(
                 "policy", {"q1": q1_values[j], "q2": q2_values[j]}, j + 1
@@ -175,7 +186,7 @@ def job(
             writer.add_scalar("target", target_q_values[j], j + 1)
             writer.add_scalars(
                 "avg_loss",
-                {"actor_loss": actor_losses[i], "critic_loss": critic_losses[j]},
+                {"actor_loss": actor_losses[j], "critic_loss": critic_losses[j]},
                 j + 1,
             )
         print(f"matrics record finish!")
@@ -191,16 +202,16 @@ if __name__ == "__main__":
         FEATURE_SIZE + END_POS * 2
     )  # record previous rewards (cascade) and position (position)
     BATCH_SIZE = 256
-    NUM_INTERACTION = 100000
+    NUM_INTERACTION = 50000
     SAMPLE_ITERATION = args.sample_iter
     CAPACITY = 3e6
     DISCOUNT = 0.9
     TAU = 0.005
-    LR = 1e-4
+    LR = 1e-3
     LOAD = False
     SAVE = True
     NORMALIZE = True
-    USE_CQL = True
+    USE_CQL = args.use_cql
 
     click_models = ["informational", "perfect", "navigational"]
     # click_models = ["informational", "perfect"]
