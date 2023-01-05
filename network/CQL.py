@@ -12,21 +12,30 @@ class Critic(nn.Module):
         action_dim,
     ) -> None:
         super().__init__()
-        self.ln1 = nn.Linear(state_dim + action_dim, 250)
-        self.ln2 = nn.Linear(250, 250)
-        self.ln3 = nn.Linear(250, 1)
+        self.ln1 = nn.Linear(state_dim + action_dim, 256)
+        self.ln2 = nn.Linear(256, 256)
+        self.ln3 = nn.Linear(256, 1)
+        self.norm1 = nn.LayerNorm(state_dim + action_dim)
+        self.norm2 = nn.LayerNorm(256)
+        self.norm3 = nn.LayerNorm(256)
 
     def forward(self, state, action):
-        q1 = F.relu(self.ln1(torch.cat([state, action], dim=1)))
+        q1 = self.norm1(torch.cat([state, action], dim=1))
+        q1 = F.relu(self.ln1(q1))
+        q1 = self.norm2(q1)
         q1 = F.relu(self.ln2(q1))
+        q1 = self.norm3(q1)
         q1 = self.ln3(q1)
         return q1
 
     def get_all_actions_q(self, state, candidates, mask):
         candidates = candidates * mask.reshape(-1, 1)
         state = torch.repeat_interleave(state, candidates.shape[0], 0)
-        scores = F.relu(self.ln1(torch.cat([state, candidates], dim=1)))
+        scores = self.norm1(torch.cat([state, candidates], dim=1))
+        scores = F.relu(self.ln1(scores))
+        scores = self.norm2(scores)
         scores = F.relu(self.ln2(scores))
+        scores = self.norm3(scores)
         scores = self.ln3(scores)
         return scores.reshape(-1)
 
@@ -38,15 +47,21 @@ class Actor(nn.Module):
         action_dim,
     ) -> None:
         super().__init__()
-        self.ln1 = nn.Linear(state_dim + action_dim, 250)
-        self.ln2 = nn.Linear(250, 250)
-        self.ln3 = nn.Linear(250, 1)
+        self.ln1 = nn.Linear(state_dim + action_dim, 256)
+        self.ln2 = nn.Linear(256, 256)
+        self.ln3 = nn.Linear(256, 1)
+        self.norm1 = nn.LayerNorm(state_dim + action_dim)
+        self.norm2 = nn.LayerNorm(256)
+        self.norm3 = nn.LayerNorm(256)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, state, candidates, mask):
         state = torch.repeat_interleave(state, candidates.shape[0], 0)
-        scores = F.relu(self.ln1(torch.cat([state, candidates], dim=1)))
+        scores = self.norm1(torch.cat([state, candidates], dim=1))
+        scores = F.relu(self.ln1(scores))
+        scores = self.norm2(scores)
         scores = F.relu(self.ln2(scores))
+        scores = self.norm3(scores)
         scores = self.ln3(scores).reshape(-1)
         prob = F.softmax(scores, dim=0) * mask
         # sample action from prob

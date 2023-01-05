@@ -18,6 +18,7 @@ class LetorDataset(AbstractDataset):
     ):
         super().__init__(path, feature_size, query_level_norm)
         self._binary_label = binary_label
+        self.rank_list_size = -1
         self._comments = {}
         self._docid_map = {}
         # self._docstr_map = {}
@@ -60,6 +61,7 @@ class LetorDataset(AbstractDataset):
 
     def _load_data(self):
         print("Loading {}......".format(self._path))
+        qid_to_idx = {}
         with open(self._path, "r") as fin:
             current_query = None
             for line in fin:
@@ -68,7 +70,6 @@ class LetorDataset(AbstractDataset):
                 if query == current_query:
                     docid = len(self._query_get_docids[query])
                     old_query = True
-
                 else:
                     if current_query != None and self._query_level_norm:
                         self._normalise(current_query)
@@ -134,8 +135,64 @@ class LetorDataset(AbstractDataset):
                     self._query_docid_get_rel[query] = {docid: relevence}
                     self._query_relevant_labels[query] = [relevence]
 
+        self.remove_invalid_data()
+        self.get_rank_list_size()
+        self.pad()
         if self._query_level_norm:
             self._normalise(current_query)
+
+    def get_rank_list_size(self):
+        qids = self.get_all_querys()
+        self.initial_list_lengths = [
+            len(self.get_candidate_docids_by_query(query)) for query in qids
+        ]
+        for i in range(len(self.initial_list_lengths)):
+            x = self.initial_list_lengths[i]
+            if self.rank_list_size < x:
+                self.rank_list_size = x
+        assert self.rank_list_size > 0, "Invalid rank list size (must > 0)."
+
+    def pad(self):
+        """
+        Pad a rank list with zero feature vectors when it is shorter than the required rank list size.
+
+        Args:
+            pad_tails: (bool) Add padding vectors to the tails of each list (True) or the heads of each list (False)
+
+        Returns:
+            None
+        """
+        qids = self.get_all_querys()
+        for query in qids:
+            if len(self.get_candidate_docids_by_query(query)) < self.rank_list_size:
+                self._query_get_docids[query] += [-1] * (
+                    self.rank_list_size - len(self._query_get_docids[query])
+                )
+
+    def remove_invalid_data(self):
+        """remove query lists with no relevant items or less than 2 items"""
+
+        # Find invalid queries and documents
+        invalid_qids = []
+        for query in self.get_all_querys():
+            if (
+                len(self._query_get_docids[query]) < 2
+                or sum(self._query_relevant_labels[query]) <= 0
+            ):
+                invalid_qids.append(query)
+
+        # Remove invalid queries and documents
+        print("Remove %d invalid queries." % len(invalid_qids))
+        print(invalid_qids)
+        for query in invalid_qids:
+            del self._query_docid_get_features[query]
+            del self._query_get_docids[query]
+            del self._query_get_all_features[query]
+            del self._query_docid_get_rel[query]
+            del self._query_relevant_labels[query]
+            del self._query_pos_docids[query]
+            # del self._comments[query]
+            del self._docid_map[query]
 
     def _normalise(self, query):
         norm = np.zeros((len(self._query_get_docids[query]), self._feature_size))

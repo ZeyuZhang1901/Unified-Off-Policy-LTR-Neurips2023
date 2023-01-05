@@ -1,25 +1,17 @@
 import sys
 
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-sys.path.append("../")
+whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
-from utils import evl_tool
-from network.Memory import Memory
 from ranker.DoubleDQNRanker import DoubleDQNRanker
-from ranker.RandomRanker import RandomRanker
-from clickModel.CM import CM
-from clickModel.PBM import PBM
-from data_collect import dataCollect
 from dataset import LetorDataset
+from clickModel import click_models as cm
 
 import multiprocessing as mp
 import numpy as np
 import random
 import torch
-
-np.random.seed(1958)
-random.seed(1958)
-torch.manual_seed(1958)
+import json
 
 import argparse
 
@@ -27,163 +19,129 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--feature_size", type=int, required=True)
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--rel_level", type=int, required=True)
-parser.add_argument("--sample_iter", type=int, required=True)
+parser.add_argument("--data_type", type=str, required=True)  # 'mq' or 'web10k'
 args = parser.parse_args()
 
 # %%
+def run(
+    train_set,
+    test_set,
+    ranker,
+    num_iteration,
+    writer,
+    steps_per_checkpoint,
+    checkpoint_path,
+):
 
-
-def run(train_set, test_set, ranker, memory, num_iteration, end_pos):
-
-    train_ndcg_scores = []
-    test_ndcg_scores = []
-    q_values = []
-    target_q_values = []
-    losses = []
+    loss = 0.0
+    loss_count = 0.0
+    best_perf = None
 
     for i in range(num_iteration):
-        q, target_q, loss = ranker.update_policy(memory, train_set)
-        q_values.append(q)
-        target_q_values.append(target_q)
-        losses.append(loss)
-        print(f"iter {i+1}: q_value {q} target q value {target_q} loss {loss}")
+        input_feed, info_map = ranker.get_train_batch(train_set, check_validation=True)
+        step_loss, loss_summary, norm_summary = ranker.update_policy(input_feed)
+        loss += step_loss
+        loss_count += 1
+        writer.add_scalars("Loss", loss_summary, ranker.global_step)
+        writer.add_scalars("Norm", norm_summary, ranker.global_step)
 
-        # evaluate
-        if i % int(num_iteration / 100) == 0:
-            # trainset
-            all_result = ranker.get_all_query_result_list(train_set)
-            ndcg = evl_tool.average_ndcg_at_k(train_set, all_result, end_pos)
-            train_ndcg_scores.append(ndcg)
-            print(f"train eval {int((i+1)/100)} ndcg {ndcg}")
-            # testset
-            all_result = ranker.get_all_query_result_list(test_set)
-            ndcg = evl_tool.average_ndcg_at_k(test_set, all_result, end_pos)
-            test_ndcg_scores.append(ndcg)
-            print(f"test eval {int((i+1)/100)} ndcg {ndcg}")
-
-    return train_ndcg_scores, test_ndcg_scores, q_values, target_q_values, losses
+        if i % steps_per_checkpoint == 0:
+            print(f"Checkpoint at step {ranker.global_step}\tLoss {loss/loss_count}")
+            input_feed, info_map = ranker.get_validation_batch(
+                test_set, check_validation=False
+            )
+            _, _, valid_summary = ranker.validation(input_feed)
+            writer.add_scalars("Validation", valid_summary, ranker.global_step)
+            for key, value in valid_summary.items():
+                print(key, value)
+                if not ranker.objective_metric == None:
+                    if key == ranker.objective_metric:
+                        if best_perf == None or best_perf < value:
+                            best_perf = value
+                            print("Save model, valid %s:%.3f" % (key, best_perf))
+                            torch.save(ranker.model.state_dict(), checkpoint_path)
+                            break
+            loss = 0.0
+            loss_count = 0
+            sys.stdout.flush()
 
 
 # %%
-
-
 def job(
+    feature_size,
     model_type,
-    sample_iteration,
-    state_dim,
-    action_dim,
-    memory,
+    click_type,
+    data_type,
+    batch_size,
+    lr,
+    num_interaction,
+    steps_per_checkpoint,
+    target_update_steps,
     f,
     train_set,
     test_set,
     output_fold,
-    load=False,
-    save=False,
 ):
 
-    if args.rel_level == 5:
-        if model_type == "perfect":
-            pc = [0.0, 0.2, 0.4, 0.8, 1.0]
-            ps = [0.0, 0.0, 0.0, 0.0, 0.0]
-        elif model_type == "navigational":
-            pc = [0.05, 0.3, 0.5, 0.7, 0.95]
-            ps = [0.2, 0.3, 0.5, 0.7, 0.9]
-        elif model_type == "informational":
-            pc = [0.4, 0.6, 0.7, 0.8, 0.9]
-            ps = [0.1, 0.2, 0.3, 0.4, 0.5]
-    elif args.rel_level == 3:
-        if model_type == "perfect":
-            pc = [0.0, 0.5, 1.0]
-            ps = [0.0, 0.0, 0.0]
-        elif model_type == "navigational":
-            pc = [0.05, 0.5, 0.95]
-            ps = [0.2, 0.5, 0.9]
-        elif model_type == "informational":
-            pc = [0.4, 0.7, 0.9]
-            ps = [0.1, 0.3, 0.5]
+    click_model_path = (
+        whole_path
+        + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
+    )
+    with open(click_model_path) as fin:
+        model_desc = json.load(fin)
+        click_model = cm.loadModelFromJson(model_desc)
 
-    cm = PBM(pc, 1)
-    # cm = CM(pc, 1)
-
-    for r in range(1, 2):
-        # np.random.seed(r)
+    for r in range(1, 4):
+        np.random.seed(r)
+        random.seed(r)
+        torch.manual_seed(r)
         writer = SummaryWriter(
-            "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r)
+            "{}/fold{}/{}_{}_run{}/".format(output_fold, f, click_type, model_type, r)
         )
 
-        ranker = DoubleDQNRanker(state_dim, action_dim, LR, BATCH_SIZE, DISCOUNT, TAU)
-        behavior_ranker = RandomRanker()
-        if load:
-            ranker.load_ranker(f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/")
-        dataCollect(
-            state_dim,
-            action_dim,
-            memory,
-            behavior_ranker,
-            train_set,
-            cm,
-            sample_iteration,
-            int(CAPACITY),
+        ranker = DoubleDQNRanker(
+            feature_dim=feature_size,
+            batch_size=batch_size,
+            learning_rate=lr,
+            click_model=click_model,
+            target_update_step=target_update_steps,
         )
-        (
-            train_ndcg_scores,
-            test_ndcg_scores,
-            q_values,
-            target_q_values,
-            losses,
-        ) = run(train_set, test_set, ranker, memory, NUM_INTERACTION, END_POS)
-        if save:
-            ranker.restore_ranker(f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/")
-
-        evl_tool.write_performance(
-            path=f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_trainset_{NUM_INTERACTION}.txt",
-            dataset=train_set,
+        ranker.rank_list_size = min(
+            ranker.rank_list_size, train_set.rank_list_size, test_set.rank_list_size
+        )
+        run(
+            train_set=train_set,
+            test_set=test_set,
             ranker=ranker,
-            end_pos=END_POS,
+            num_iteration=num_interaction,
+            writer=writer,
+            steps_per_checkpoint=steps_per_checkpoint,
+            checkpoint_path="{}/fold{}/{}_{}_run{}/DQN.ckpt".format(
+                output_fold, f, click_type, model_type, r
+            ),
         )
-        evl_tool.write_performance(
-            path=f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_testset_{NUM_INTERACTION}.txt",
-            dataset=test_set,
-            ranker=ranker,
-            end_pos=END_POS,
-        )
-        print(f"matrics record start!")
-        for i in range(len(train_ndcg_scores)):
-            writer.add_scalar("train_ndcg", train_ndcg_scores[i], i + 1)
-        for i in range(len(test_ndcg_scores)):
-            writer.add_scalar("test_ndcg", test_ndcg_scores[i], i + 1)
-        for j in range(len(losses)):
-            writer.add_scalar("policy", q_values[j], j + 1)
-            writer.add_scalar("target", target_q_values[j], j + 1)
-            writer.add_scalar("avg_loss", losses[j], j + 1)
         writer.close()
-        print(f"matrics record finish!")
 
 
 if __name__ == "__main__":
 
+    torch.multiprocessing.set_start_method("spawn")
     END_POS = 10
     FEATURE_SIZE = args.feature_size
-    STATE_DIM = (
-        FEATURE_SIZE + END_POS * 2
-    )  # record previous rewards (cascade) and position (position)
     BATCH_SIZE = 256
     NUM_INTERACTION = 30000
-    SAMPLE_ITERATION = args.sample_iter
-    CAPACITY = 3e6
-    DISCOUNT = 0.9
-    TAU = 0.005
+    STEPS_PER_CHECKPOINT = 100
+    TARGET_UPDATE_STEPS = 50
     LR = 1e-3
-    LOAD = False
-    # LOAD = True
-    SAVE = True
-    # SAVE = False
-    NORMALIZE = True
+    NORMALIZE = False
+    DISCOUNT = 0.9
+    DATA_TYPE = args.data_type
 
-    click_models = ["informational", "perfect", "navigational"]
-    # click_models = ["informational", "perfect"]
-    # click_models = ["perfect"]
+    # model_types = ["informational", "perfect", "navigational"]
+    model_types = ["informational", "perfect"]
+    # model_types = ["perfect"]
+    click_types = ["pbm", "cascade"]
+    # click_types = ["pbm"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
@@ -196,28 +154,30 @@ if __name__ == "__main__":
             training_path, FEATURE_SIZE, query_level_norm=NORMALIZE
         )
         test_set = LetorDataset(test_path, FEATURE_SIZE, query_level_norm=NORMALIZE)
-        memory = Memory(capacity=int(CAPACITY))
 
         processors = []
         # for 3 click_models
-        for click_model in click_models:
-            p = mp.Process(
-                target=job,
-                args=(
-                    click_model,
-                    SAMPLE_ITERATION,
-                    STATE_DIM,
-                    FEATURE_SIZE,
-                    memory,
-                    f,
-                    train_set,
-                    test_set,
-                    output_fold,
-                    LOAD,
-                    SAVE,
-                ),
-            )
-            p.start()
-            processors.append(p)
+        for click_type in click_types:
+            for mode_type in model_types:
+                p = mp.Process(
+                    target=job,
+                    args=(
+                        FEATURE_SIZE,
+                        mode_type,
+                        click_type,
+                        DATA_TYPE,
+                        BATCH_SIZE,
+                        LR,
+                        NUM_INTERACTION,
+                        STEPS_PER_CHECKPOINT,
+                        TARGET_UPDATE_STEPS,
+                        f,
+                        train_set,
+                        test_set,
+                        output_fold,
+                    ),
+                )
+                p.start()
+                processors.append(p)
     for p in processors:
         p.join()
