@@ -1,28 +1,41 @@
-# MDPLTR
+# Offline Learning to Rank Codebase
 
-Learning to rank python codebase, including our MDP based ones. Thanks to the codebase from https://arxiv.org/abs/2201.01534
+Offline learning to rank (LTR) python codebase, algorithms below are or will be implemented.
 
-## Results
+- *MDP-based*: DQN, DoubleDQN, BCQ, CQL, SAC 
+- *baselines*: Bandit, DLA (state of the art)
 
-The results are collected and visualized by `tensorboard`. Under current directory, run `tensorboard --logdir results/dataest_name/alg_name`, where,
+## Project Structure
 
-- `dataset_name`: select from `MQ2007`, `MQ2008`...
-- `alg_name`: select from `DQN`, `DoubleDQN`...
+The folder structure (**bold font** for folder)
 
-In addition, the performance of trained ranker are stored after each training session in a `.txt` file: 
+- **Click model**: simulate users' click probabilities and browsing behavior
+  - **Model_files**: parameters of different user behavior, e.g. PBM, Cascade, UBM. store in `.json` files.
+  - click_models.py: simulate users' behavior based on parameters in `Model_files` folder, get click lists for each queries in exps.
+- **dataset**: generate initial rank lists for all queries, either using *SVM ranker* or *Random ranker* as initial ranker (logging policy)
+- **libsvm_tools**: data preprocess tools, forming "ULTRA" or "ULTRE" data (not that important)
+- **network**: Neural network structure for each algorithm
+  - each file is named as `alg_name.py`.
+- **ranker**: rankers trained with different algorithms
+  - each file is named as `{alg_name}Ranker.py`.
+  - general methods are: *update_policy (update policy after training one epoch)*, *validation_forward (validate on valid set while training)*
+- **runs**: each file runs an exp with a certain algorithm.
+  - each file is named as `run_{alg_name}.py`
+  - files named `run_{dataset_name}.sh` are files that run multiple algorithms at one time, not necessary.
+- **utils**: utilities, including *metric calculation* (need in validation and testing), *curves plotting*
+- `svm_rank_classify`, `svm_rank_learn`, `svm_rank_linux64.tar.gz` are SVM ranker files, not that important.
 
-- path format : `results/{dataset_name}/{alg_name}/fold{i}/{model_type}_run{j}_ndcg/performance_{setname}_{train_iteration}.txt`
-  - `dataset_name`: select from `MQ2007`, `MQ2008`...
-  - `alg_name`: select from `DQN`, `DoubleDQN`...
-  - `i`: fold number, from 1 to 5
-  - `model_type`: select from `perfect`, `informational` and `navigational`
-  - `j`: run time, now is 1 only
-  - `setname`: select from `trainset`, `testset`
-  - `train_iteration`: now is set 100000
-- e.g. `results/MQ2008/DoubleDQN/fold1/perfect_run1_ndcg/perform_testset_100000.txt`
+## Run Experiments
 
-## Run
+All running files are under `runs` folder, each represent an algorithm. Some arguments should be given as input.
 
-To run the code, just run `.sh` files in `./OffpolicyLTR/run_{dataset_name}.sh`. 
+- `--feature_size`: int, dimension of each query-doc feature vector.
+- `--dataset_fold`: str, folder that contains the dataset.
+- `--output_fold`: str, folder that store the outputs, including training curves and trained models.
+- `--data_type`: str, refers to the level of relevance label. (*"mq"* refers to 3-level and *"web10k"* refers to 5-level)
+- `--logging`: str, refers to logging policy (*"svm"* or *"initial"*)
+- `--five_fold`: bool, whether the dataset is divided into five-fold.
 
-- If load or save model needed, set hyperparameter `LOAD` and `SAVE` True, respectively.
+## Results Visualization
+
+The results are collected and visualized by `tensorboard`. Run `tensorboard --logdir {output_fold}` directly.
