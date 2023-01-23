@@ -1,230 +1,268 @@
 import sys
 
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-sys.path.append("../")
+whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
-from utils import evl_tool
-from network.Memory import Memory
 from ranker.BCQRanker import BCQRanker
-from ranker.RandomRanker import RandomRanker
-from clickModel.CM import CM
-from clickModel.PBM import PBM
-from data_collect import dataCollect
+from ranker import input_feed
 from dataset import LetorDataset
+from clickModel import click_models as cm
+from utils import metrics
 
-import multiprocessing as mp
+import torch.multiprocessing as mp
 import numpy as np
 import random
 import torch
+import json
+import os
 
-np.random.seed(1958)
-random.seed(1958)
-torch.manual_seed(1958)
 import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--feature_size", type=int, required=True)
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--rel_level", type=int, required=True)
-parser.add_argument("--sample_iter", type=int, required=True)
+parser.add_argument("--data_type", type=str, required=True)  # 'mq' or 'web10k'
 args = parser.parse_args()
 
 # %%
-def run(test_set, ranker, memory, num_iteration, end_pos):
+def train(
+    train_set,
+    valid_set,
+    train_input_feed,
+    valid_input_feed,
+    ranker,
+    num_iteration,
+    writer,
+    steps_per_checkpoint,
+    steps_per_save,
+    checkpoint_path,
+):
 
-    train_ndcg_scores = []
-    test_ndcg_scores = []
-    q1_values = []
-    q2_values = []
-    target_q1_values = []
-    target_q2_values = []
-    actor_losses = []
-    critic_losses = []
+    loss = 0.0
+    loss_count = 0.0
+    best_perf = None
 
     for i in range(num_iteration):
-        q1, q2, target_q1, target_q2, critic_loss, actor_loss = ranker.update_policy(
-            memory
+        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
+        step_loss, loss_summary, norm_summary, q_summary = ranker.update_policy(
+            input_feed
         )
-        q1_values.append(q1)
-        q2_values.append(q2)
-        target_q1_values.append(target_q1)
-        target_q2_values.append(target_q2)
-        critic_losses.append(critic_loss)
-        actor_losses.append(actor_loss)
+        loss += step_loss
+        loss_count += 1
+        writer.add_scalars("Loss", loss_summary, ranker.global_step)
+        writer.add_scalars("Norm", norm_summary, ranker.global_step)
+        writer.add_scalars("Q Value", q_summary, ranker.global_step)
 
-        print(f"iter {i+1}: ")
-        print(f"q1_value {q1} q2_value {q2}")
-        print(f"target_q1_value {target_q1} target_q2_value {target_q2}")
-        print(f"actor_loss {actor_loss} critic_loss {critic_loss}")
-        # evaluate 100 times in one train session
-        if i % int(num_iteration / 100) == 0:
-            # trainset
-            all_result = ranker.get_all_query_result_list(train_set)
-            ndcg = evl_tool.average_ndcg_at_k(train_set, all_result, end_pos)
-            train_ndcg_scores.append(ndcg)
-            print(f"train eval {int((i+1)/100)} ndcg {ndcg}")
-            # testset
-            all_result = ranker.get_all_query_result_list(test_set)
-            ndcg = evl_tool.average_ndcg_at_k(test_set, all_result, end_pos)
-            test_ndcg_scores.append(ndcg)
-            print(f"test eval {int((i+1)/100)} ndcg {ndcg}")
+        if i % steps_per_checkpoint == 0:
+            print(f"Checkpoint at step {ranker.global_step}")
+            input_feed = valid_input_feed.get_validation_batch(
+                valid_set, check_validation=False
+            )
+            _, _, valid_summary = ranker.validation(input_feed)
+            writer.add_scalars("Validation", valid_summary, ranker.global_step)
+            for key, value in valid_summary.items():
+                print(key, value)
+                if not ranker.objective_metric == None:
+                    if key == ranker.objective_metric:
+                        if best_perf == None or best_perf < value:
+                            best_perf = value
+                            print("Save model, valid %s:%.3f" % (key, best_perf))
+                            torch.save(
+                                ranker.model.state_dict(),
+                                checkpoint_path + "BCQ_best.ckpt",
+                            )
+                            break
+            loss = 0.0
+            loss_count = 0
+            sys.stdout.flush()
 
-    return (
-        train_ndcg_scores,
-        test_ndcg_scores,
-        q1_values,
-        q2_values,
-        target_q1_values,
-        target_q2_values,
-        actor_losses,
-        critic_losses,
+        if i % steps_per_save == 0:
+            print(f"Checkpoint at step {ranker.global_step} for saving")
+            torch.save(
+                ranker.model.state_dict(),
+                checkpoint_path + f"BCQ(step_{ranker.global_step}).ckpt",
+            )
+
+
+def test(
+    test_set,
+    test_input_feed,
+    ranker,
+    metric_type,
+    metric_topn,
+    performance_path,  # used to record performance on each query
+    checkpoint_path,
+):
+    ## Load model with best performance
+    print("Reading model parameters from %s" % checkpoint_path + "BCQ_best.ckpt")
+    ckpt = torch.load(checkpoint_path + "BCQ_best.ckpt")
+    ranker.model.load_state_dict(ckpt)
+    ranker.model.eval()
+
+    ## test performance and write labels
+    input_feed_test = test_input_feed.get_validation_batch(
+        test_set, check_validation=False
     )
+    (
+        ranker.docid_inputs,
+        ranker.letor_features,
+        ranker.labels,
+    ) = input_feed.create_input_feed(
+        input_feed_test, ranker.rank_list_size, ranker.device
+    )
+
+    metric_record = {}
+    with torch.no_grad():
+        ranker.output, labels = ranker.validation_forward()
+        pad_removed_output = ranker.remove_padding_for_metric_eval()
+        for metric in metric_type:
+            topns = metric_topn
+            metric_values = metrics.make_ranking_metric_fn(metric, topns)(
+                ranker.labels, pad_removed_output, None
+            )
+            for topn, metric_value in zip(topns, metric_values):
+                metric_record[f"{metric}_{topn}"] = metric_value.item()
+
+    ## record in `performance_path`.txt file
+    qids = test_set.get_all_querys()
+    lines = []
+    labels_list = torch.unbind(labels.to(torch.int64), dim=0)
+    sorted_labels = labels.sort(descending=True, dim=1).values
+    sorted_labels_list = torch.unbind(sorted_labels.to(torch.int64), dim=0)
+    for metric, value in metric_record.items():
+        lines.append(f"{metric}: {value}\n")
+    lines.append("\nRank lists and ideal rank lists for each query:\n")
+    for i in range(len(qids)):
+        lines.append(f"qid: {qids[i]}\n")
+        lines.append(f"policy_label_list\t{labels_list[i].tolist()}\n")
+        lines.append(f"sorted_label_list\t{sorted_labels_list[i].tolist()}\n")
+
+    with open(performance_path, "a") as fin:
+        fin.writelines(lines)
 
 
 # %%
 def job(
+    feature_size,
     model_type,
-    sample_iteration,
-    state_dim,
-    action_dim,
-    memory,
+    click_type,
+    data_type,
+    batch_size,
+    lr,
+    bcq_threshold,
+    max_visuable_size,
+    metric_type,
+    metric_topn,
+    num_interaction,
+    steps_per_checkpoint,
+    steps_per_save,
+    target_update_steps,
     f,
     train_set,
+    valid_set,
     test_set,
     output_fold,
-    load=False,
-    save=False,
 ):
 
-    if args.rel_level == 5:
-        if model_type == "perfect":
-            pc = [0.0, 0.2, 0.4, 0.8, 1.0]
-            ps = [0.0, 0.0, 0.0, 0.0, 0.0]
-        elif model_type == "navigational":
-            pc = [0.05, 0.3, 0.5, 0.7, 0.95]
-            ps = [0.2, 0.3, 0.5, 0.7, 0.9]
-        elif model_type == "informational":
-            pc = [0.4, 0.6, 0.7, 0.8, 0.9]
-            ps = [0.1, 0.2, 0.3, 0.4, 0.5]
-    elif args.rel_level == 3:
-        if model_type == "perfect":
-            pc = [0.0, 0.5, 1.0]
-            ps = [0.0, 0.0, 0.0]
-        elif model_type == "navigational":
-            pc = [0.05, 0.5, 0.95]
-            ps = [0.2, 0.5, 0.9]
-        elif model_type == "informational":
-            pc = [0.4, 0.7, 0.9]
-            ps = [0.1, 0.3, 0.5]
+    click_model_path = (
+        whole_path
+        + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
+    )
+    with open(click_model_path) as fin:
+        model_desc = json.load(fin)
+        click_model = cm.loadModelFromJson(model_desc)
 
-    cm = PBM(pc, 1)
-    # cm = CM(pc, 1)
-
-    for r in range(1, 2):
-        # np.random.seed(r)
+    for r in range(1, 4):
+        print(f"{r} Train start! click type: {click_type}\tmodel type: {model_type}")
+        np.random.seed(r)
+        random.seed(r)
+        torch.manual_seed(r)
         writer = SummaryWriter(
-            "{}/fold{}/{}_run{}_ndcg/".format(output_fold, f, model_type, r)
+            "{}/fold{}/{}_{}_run{}/".format(output_fold, f, click_type, model_type, r)
         )
 
+        max_visuable_size = min(
+            train_set.rank_list_size, valid_set.rank_list_size, max_visuable_size
+        )
+        train_input_feed = input_feed.Train_Input_feed(
+            click_model=click_model,
+            max_visuable_size=max_visuable_size,
+            batch_size=batch_size,
+        )
+        valid_input_feed = input_feed.Validation_Input_feed(
+            max_candidate_num=valid_set.rank_list_size
+        )
         ranker = BCQRanker(
-            state_dim,
-            action_dim,
-            MAX_ACTION,
-            BATCH_SIZE,
-            LR,
-            DISCOUNT,
-            TAU,
-            LAMBDA,
-            PHI,
+            feature_dim=feature_size,
+            batch_size=batch_size,
+            learning_rate=lr,
+            max_visuable_size=max_visuable_size,
+            rank_list_size=valid_set.rank_list_size,
+            metric_type=metric_type,
+            metric_topn=metric_topn,
+            click_model=click_model,
+            target_update_step=target_update_steps,
+            bcq_threshold=bcq_threshold,
         )
-        behavior_ranker = RandomRanker()
-        if load:
-            ranker.load_ranker(f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/")
-        dataCollect(
-            state_dim,
-            action_dim,
-            memory,
-            behavior_ranker,
-            train_set,
-            cm,
-            sample_iteration,
-            CAPACITY,
-            END_POS,
-        )
-        (
-            train_ndcg_scores,
-            test_ndcg_scores,
-            q1_values,
-            q2_values,
-            target_q1_values,
-            target_q2_values,
-            actor_losses,
-            critic_losses,
-        ) = run(test_set, ranker, memory, NUM_INTERACTION, END_POS)
-        if save:
-            ranker.restore_ranker(f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/")
-
-        evl_tool.write_performance(
-            path=f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_trainset_{NUM_INTERACTION}.txt",
-            dataset=train_set,
+        train(
+            train_set=train_set,
+            valid_set=valid_set,
+            train_input_feed=train_input_feed,
+            valid_input_feed=valid_input_feed,
             ranker=ranker,
-            end_pos=END_POS,
+            num_iteration=num_interaction,
+            writer=writer,
+            steps_per_checkpoint=steps_per_checkpoint,
+            steps_per_save=steps_per_save,
+            checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
+                output_fold, f, click_type, model_type, r
+            ),
         )
-        evl_tool.write_performance(
-            path=f"{output_fold}/fold{f}/{model_type}_run{r}_ndcg/perform_testset_{NUM_INTERACTION}.txt",
-            dataset=test_set,
-            ranker=ranker,
-            end_pos=END_POS,
-        )
-        print(f"matrics record start!")
-        for i in range(len(train_ndcg_scores)):
-            writer.add_scalar("train_ndcg", train_ndcg_scores[i], i + 1)
-        for i in range(len(test_ndcg_scores)):
-            writer.add_scalar("test_ndcg", test_ndcg_scores[i], i + 1)
-        for j in range(len(q1_values)):
-            writer.add_scalars(
-                "policy", {"q1": q1_values[j], "q2": q2_values[j]}, j + 1
-            )
-            writer.add_scalars(
-                "target",
-                {"target_q1": target_q1_values[j], "target_q2": target_q2_values[j]},
-                j + 1,
-            )
-            writer.add_scalars(
-                "avg_loss",
-                {"actor_loss": actor_losses[j], "critic_loss": critic_losses[j]},
-                j + 1,
-            )
-        print(f"matrics record finish!")
         writer.close()
 
+        print(f"{r} Test start! click type: {click_type}\tmodel type: {model_type}")
+        test_input_feed = input_feed.Validation_Input_feed(
+            max_candidate_num=test_set.rank_list_size
+        )
+        test(
+            test_set=test_set,
+            test_input_feed=test_input_feed,
+            ranker=ranker,
+            metric_type=metric_type,
+            metric_topn=metric_topn,
+            performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
+                output_fold, f, click_type, model_type, r
+            ),
+            checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
+                output_fold, f, click_type, model_type, r
+            ),
+        )
 
-# %%
+
 if __name__ == "__main__":
 
-    END_POS = 10
+    torch.multiprocessing.set_start_method("spawn")
+    MAX_VISUABLE_POS = 10
     FEATURE_SIZE = args.feature_size
-    STATE_DIM = (
-        FEATURE_SIZE + END_POS * 2
-    )  # record previous rewards (cascade) and position (position)
-    MAX_ACTION = 1.0  # after normalization
     BATCH_SIZE = 256
-    NUM_INTERACTION = 30000
-    SAMPLE_ITERATION = args.sample_iter
-    CAPACITY = 3e6
-    DISCOUNT = 0.9
-    TAU = 0.005
-    LAMBDA = 0.75  # target calculation
-    PHI = 0.05  # perturb range
+    NUM_INTERACTION = 10000
+    # NUM_INTERACTION = 30000
+    STEPS_PER_CHECKPOINT = 100
+    STEPS_PER_SAVE = 1000
+    TARGET_UPDATE_STEPS = 50
     LR = 1e-3
-    LOAD = False
-    SAVE = True
-    NORMALIZE = True
+    BCQ_THRESHOLD = 0.3
+    NORMALIZE = False
+    DISCOUNT = 0.9
+    DATA_TYPE = args.data_type
 
-    click_models = ["informational", "perfect", "navigational"]
-    # click_models = ["informational", "perfect"]
-    # click_models = ["perfect"]
+    # model_types = ["informational", "perfect", "navigational"]
+    model_types = ["informational", "perfect"]
+    # model_types = ["perfect"]
+    click_types = ["pbm", "cascade"]
+    # click_types = ["pbm"]
+    # click_types = ["cascade"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
@@ -237,28 +275,31 @@ if __name__ == "__main__":
             training_path, FEATURE_SIZE, query_level_norm=NORMALIZE
         )
         test_set = LetorDataset(test_path, FEATURE_SIZE, query_level_norm=NORMALIZE)
-        memory = Memory(capacity=int(CAPACITY))
 
         processors = []
         # for 3 click_models
-        for click_model in click_models:
-            p = mp.Process(
-                target=job,
-                args=(
-                    click_model,
-                    SAMPLE_ITERATION,
-                    STATE_DIM,
-                    FEATURE_SIZE,
-                    memory,
-                    f,
-                    train_set,
-                    test_set,
-                    output_fold,
-                    LOAD,
-                    SAVE,
-                ),
-            )
-            p.start()
-            processors.append(p)
+        for click_type in click_types:
+            for mode_type in model_types:
+                p = mp.Process(
+                    target=job,
+                    args=(
+                        FEATURE_SIZE,
+                        mode_type,
+                        click_type,
+                        DATA_TYPE,
+                        BATCH_SIZE,
+                        LR,
+                        NUM_INTERACTION,
+                        STEPS_PER_CHECKPOINT,
+                        TARGET_UPDATE_STEPS,
+                        BCQ_THRESHOLD,
+                        f,
+                        train_set,
+                        test_set,
+                        output_fold,
+                    ),
+                )
+                p.start()
+                processors.append(p)
     for p in processors:
         p.join()

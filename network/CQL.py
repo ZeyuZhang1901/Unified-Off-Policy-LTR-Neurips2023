@@ -5,84 +5,172 @@ from torch.distributions.categorical import Categorical
 import numpy as np
 
 
-class Critic(nn.Module):
-    def __init__(
-        self,
-        state_dim,
-        action_dim,
-    ) -> None:
-        super().__init__()
-        self.ln1 = nn.Linear(state_dim + action_dim, 256)
-        self.ln2 = nn.Linear(256, 256)
-        self.ln3 = nn.Linear(256, 1)
-        self.norm1 = nn.LayerNorm(state_dim + action_dim)
-        self.norm2 = nn.LayerNorm(256)
-        self.norm3 = nn.LayerNorm(256)
-
-    def forward(self, state, action):
-        q1 = self.norm1(torch.cat([state, action], dim=1))
-        q1 = F.relu(self.ln1(q1))
-        q1 = self.norm2(q1)
-        q1 = F.relu(self.ln2(q1))
-        q1 = self.norm3(q1)
-        q1 = self.ln3(q1)
-        return q1
-
-    def get_all_actions_q(self, state, candidates, mask):
-        candidates = candidates * mask.reshape(-1, 1)
-        state = torch.repeat_interleave(state, candidates.shape[0], 0)
-        scores = self.norm1(torch.cat([state, candidates], dim=1))
-        scores = F.relu(self.ln1(scores))
-        scores = self.norm2(scores)
-        scores = F.relu(self.ln2(scores))
-        scores = self.norm3(scores)
-        scores = self.ln3(scores)
-        return scores.reshape(-1)
-
-
 class Actor(nn.Module):
+    """Actor (Policy) model"""
+
     def __init__(
         self,
-        state_dim,
-        action_dim,
-    ) -> None:
-        super().__init__()
-        self.ln1 = nn.Linear(state_dim + action_dim, 256)
+        feature_size,
+    ):
+        """Params:
+        - `feature_size`: dimension of feature vector
+        """
+        super(Actor, self).__init__()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.state_dim = feature_size
+        self.state_dim = 2 * feature_size
+        self.action_dim = feature_size
+
+        self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
         self.ln2 = nn.Linear(256, 256)
         self.ln3 = nn.Linear(256, 1)
-        self.norm1 = nn.LayerNorm(state_dim + action_dim)
-        self.norm2 = nn.LayerNorm(256)
-        self.norm3 = nn.LayerNorm(256)
-        self.softmax = nn.Softmax(dim=-1)
+        # self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, state, candidates, mask):
-        state = torch.repeat_interleave(state, candidates.shape[0], 0)
-        scores = self.norm1(torch.cat([state, candidates], dim=1))
-        scores = F.relu(self.ln1(scores))
-        scores = self.norm2(scores)
-        scores = F.relu(self.ln2(scores))
-        scores = self.norm3(scores)
-        scores = self.ln3(scores).reshape(-1)
-        prob = F.softmax(scores, dim=0) * mask
-        # sample action from prob
-        if not prob.sum() == 0:  # in case no action to choose
-            prob = prob / prob.sum()
-            # t = prob.detach().cpu().numpy()
-            # print(t)
-            index = np.random.choice(
-                list(range(len(prob))), p=prob.detach().cpu().numpy()
-            )
-            return index, candidates[index], prob[index]
-        else:
-            print(mask)
-            if mask.sum() != 0:
-                print("debug start!")
+    def forward(
+        self,
+        state,
+        candidates,
+    ):
+        """Actor forward, input state and all actions, output prob of each action.
+        Params:
+        - `state (tensor float32)` shape [1, state_dim]
+        - `candidates (tensor float32)` shape [candidate_num, action_dim]
+        """
+        state = state.to(torch.float32)
+        candidates = candidates.to(torch.float32)
+
+        candidate_num = int(candidates.shape[0] / state.shape[0])
+        state = torch.repeat_interleave(state, candidate_num, dim=0)
+        input_data = torch.cat([state, candidates], dim=1).to(self.device)
+
+        output_data = F.relu(self.ln1(input_data))
+        output_data = F.relu(self.ln2(output_data))
+        output_data = self.ln3(output_data)
+        # output_data += 1e-10  # in case
+        output_data = output_data.reshape(-1, candidate_num)
+        output_data = output_data - output_data.max(-1, keepdim=True).values
+
+        return self.softmax(output_data, t=5)
+
+    def evaluate(
+        self,
+        state,
+        candidates,
+        masks,
+    ):
+        """Action evaluation, input state and all actinos, output chosen action, action probs and log action probs
+        - `state (tensor float32)` shape [1, state_dim]
+        - `candidates (tensor float32)` shape [candidate_num, action_dim]
+        """
+
+        action_probs = self.forward(state, candidates)
+        action_probs_mask = action_probs * masks.to(self.device)
+        action_probs_sum_mask = (
+            torch.sum(action_probs_mask, dim=1, keepdim=True) == 0.0
+        ).to(
+            torch.float32
+        )  # incase sum of probs equals to zero
+        u_probs = (
+            torch.rand_like(action_probs) + torch.ones_like(action_probs)
+        ) * masks.to(
+            self.device
+        )  # set random probs for invalid probs
+
+        action_probs_valid = u_probs * action_probs_sum_mask + action_probs_mask * (
+            1 - action_probs_sum_mask
+        )
+        action_probs = action_probs_valid / torch.sum(
+            action_probs_valid, dim=1, keepdim=True
+        )
+
+        assert (
+            torch.isnan(action_probs).any().float() == 0
+        ), f"Nan appears in training, mask: {masks}\nprobs_mask: {action_probs_sum_mask}\nprobs: {action_probs_valid}"
+        dist = Categorical(action_probs)
+        index = dist.sample().to(self.device)
+
+        z = action_probs == 0.0  ## mask out actions with prob=0
+        z = z.float() * 1e-20
+        log_action_probs = torch.log(action_probs + z)
+
+        return index, action_probs, log_action_probs
+
+    def get_action(
+        self,
+        state,
+        candidates,
+        masks,
+    ):
+        """Get action from all possible candidates"""
+        action_probs = self.forward(state, candidates)
+        action_probs_mask = action_probs * masks.to(self.device)
+        action_probs_sum_mask = (
+            torch.sum(action_probs_mask, dim=1, keepdim=True) == 0
+        ).to(
+            torch.float32
+        )  # incase sum of probs equals to zero
+        u_probs = (
+            torch.rand_like(action_probs) + torch.ones_like(action_probs)
+        ) * masks.to(
+            self.device
+        )  # set random probs for invalid probs
+
+        action_probs_valid = u_probs * action_probs_sum_mask + action_probs_mask * (
+            1 - action_probs_sum_mask
+        )
+        action_probs = action_probs_valid / torch.sum(
+            action_probs_valid, dim=1, keepdim=True
+        )
+
+        assert (
+            torch.isnan(action_probs).any().float() == 0
+        ), f"Nan appears in validation, mask: {masks}\nprobs_mask: {action_probs_sum_mask}\nprobs: {action_probs_valid}"
+        dist = Categorical(action_probs)
+        index = dist.sample().to(self.device)
+
+        return index
+
+    def softmax(self, input, t=1.0):
+        """t: temperature param, the larger, the stricter bound on different between max and min probs"""
+        ex = torch.exp(input / t).clamp(min=1e-40)
+        return ex / torch.sum(ex, dim=-1, keepdim=True)
 
 
-class Scalar(nn.Module):
-    def __init__(self, init_value) -> None:
-        super().__init__()
-        self.constant = nn.Parameter(torch.tensor(init_value, dtype=torch.float32))
+class Critic(nn.Module):
+    """Critic (Value) model."""
 
-    def forward(self):
-        return self.constant
+    def __init__(
+        self,
+        feature_size,
+    ):
+        """Params:
+        - `feature_size`: dimension of feature vector
+        """
+        super(Critic, self).__init__()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.state_dim = feature_size
+        self.state_dim = 2 * feature_size
+        self.action_dim = feature_size
+
+        self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
+        self.ln2 = nn.Linear(256, 256)
+        self.ln3 = nn.Linear(256, 1)
+
+    def forward(
+        self,
+        state,
+        candidates,
+    ):
+        """Critic Q function that maps (state, action) pairs to Q values"""
+        state = state.to(torch.float32)
+        candidates = candidates.to(torch.float32)
+
+        candidate_num = int(candidates.shape[0] / state.shape[0])
+        state = torch.repeat_interleave(state, candidate_num, dim=0)
+        input_data = torch.cat([state, candidates], dim=1).to(self.device)
+
+        output_data = F.relu(self.ln1(input_data))
+        output_data = F.relu(self.ln2(output_data))
+        output_data = self.ln3(output_data)
+
+        return output_data.reshape(-1, candidate_num)
