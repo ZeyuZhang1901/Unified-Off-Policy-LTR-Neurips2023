@@ -62,7 +62,7 @@ def train(
 
     ## valid initial performance
     print(f"Checkpoint at step {ranker.global_step}")
-    input_feed = valid_input_feed.get_validation_batch_svm(
+    input_feed = valid_input_feed.get_validation_batch(
         valid_set, check_validation=False
     )
     _, _, valid_summary = ranker.validation(input_feed)
@@ -82,7 +82,7 @@ def train(
 
     ## train and validation start
     for i in range(num_iteration):
-        input_feed = train_input_feed.get_train_batch_svm(
+        input_feed = train_input_feed.get_train_batch(
             train_set, check_validation=True
         )
         loss_summary, norm_summary, score_summary = ranker.update_policy(input_feed)
@@ -92,7 +92,7 @@ def train(
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
-            input_feed = valid_input_feed.get_validation_batch_svm(
+            input_feed = valid_input_feed.get_validation_batch(
                 valid_set, check_validation=False
             )
             _, _, valid_summary = ranker.validation(input_feed)
@@ -137,7 +137,7 @@ def test(
     ranker.rank_list_size = test_set.rank_list_size
 
     ## test performance and write labels
-    input_feed_test = test_input_feed.get_validation_batch_svm(
+    input_feed_test = test_input_feed.get_validation_batch(
         test_set, check_validation=False
     )
     (
@@ -296,8 +296,8 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    # model_types = ["informational", "perfect"]
-    model_types = ["perfect"]
+    model_types = ["informational", "perfect"]
+    # model_types = ["perfect"]
     # click_types = ["pbm", "cascade"]
     click_types = ["pbm"]
     # click_types = ["cascade"]

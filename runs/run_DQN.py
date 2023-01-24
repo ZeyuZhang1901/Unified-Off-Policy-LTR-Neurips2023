@@ -5,10 +5,8 @@ whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.DQNRanker import DQNRanker
 from ranker.input_feed import create_input_feed, Train_Input_feed, Validation_Input_feed
-from dataset import LetorDataset
 from dataset import data_utils
 
-# from dataset.data_utils import Raw_data
 from clickModel import click_models as cm
 from utils import metrics
 
@@ -17,7 +15,6 @@ import numpy as np
 import random
 import torch
 import json
-import os
 
 import argparse
 
@@ -28,6 +25,7 @@ parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
 parser.add_argument("--five_fold", type=bool, required=True)  ## five-fold
+parser.add_argument("--state_type", type=str, required=True)  ## state type
 args = parser.parse_args()
 
 # %%
@@ -43,12 +41,11 @@ def train(
     steps_per_checkpoint,
     steps_per_save,
     checkpoint_path,
-    # logging="svm",  ## indicate logging policy ('random' or 'svm')
 ):
 
     best_perf = None
 
-    ## Load actor, critic1 and critic2 statistics from selected checkpoints
+    ## Load model statistics from selected checkpoints
     if start_checkpoint > 0:
         assert (
             start_checkpoint % steps_per_save == 0
@@ -66,14 +63,9 @@ def train(
 
     ## valid initial performance
     print(f"Checkpoint at step {ranker.global_step}")
-    # if logging == "svm":
-    input_feed = valid_input_feed.get_validation_batch_svm(
+    input_feed = valid_input_feed.get_validation_batch(
         valid_set, check_validation=False
     )
-    # elif logging == "initial":
-    #     input_feed = valid_input_feed.get_validation_batch_initial(
-    #         valid_set, check_validation=False
-    #     )
     _, _, valid_summary = ranker.validation(input_feed)
     writer.add_scalars("Validation", valid_summary, ranker.global_step)
     for key, value in valid_summary.items():
@@ -90,15 +82,10 @@ def train(
                     break
 
     ## train and validation start
-    for i in range(num_iteration):
-        # if logging == "svm":
-        input_feed = train_input_feed.get_train_batch_svm(
+    for i in range(num_iteration - start_checkpoint):
+        input_feed = train_input_feed.get_train_batch(
             train_set, check_validation=True
         )
-        # elif logging == "initial":
-        #     input_feed = train_input_feed.get_train_batch_initial(
-        #         train_set, check_validation=True
-        #     )
         loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
@@ -106,14 +93,9 @@ def train(
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
-            # if logging == "svm":
-            input_feed = valid_input_feed.get_validation_batch_svm(
+            input_feed = valid_input_feed.get_validation_batch(
                 valid_set, check_validation=False
             )
-            # elif logging == "initial":
-            #     input_feed = valid_input_feed.get_validation_batch_initial(
-            #         valid_set, check_validation=False
-            #     )
             _, _, valid_summary = ranker.validation(input_feed)
             writer.add_scalars("Validation", valid_summary, ranker.global_step)
             for key, value in valid_summary.items():
@@ -152,7 +134,6 @@ def test(
     metric_topn,
     performance_path,  ## used to record performance on each query
     checkpoint_path,
-    # logging="svm",  ## indicate logging policy ('random' or 'svm')
 ):
     ## Load model with best performance
     print("Reading model parameters from %s" % checkpoint_path + "DQN_best.ckpt")
@@ -162,14 +143,9 @@ def test(
     ranker.rank_list_size = test_set.rank_list_size
 
     ## test performance and write labels
-    # if logging == "svm":
-    input_feed_test = test_input_feed.get_validation_batch_svm(
+    input_feed_test = test_input_feed.get_validation_batch(
         test_set, check_validation=False
     )
-    # elif logging == "initial":
-    #     input_feed_test = test_input_feed.get_validation_batch_initial(
-    #         test_set, check_validation=False
-    #     )
     (
         ranker.docid_inputs,
         ranker.letor_features,
@@ -191,10 +167,7 @@ def test(
                 metric_record[f"{metric}_{topn}"] = metric_value.item()
 
     ## record in `performance_path`.txt file
-    # if logging == "svm":
     qids = test_set.qids
-    # elif logging == "initial":
-    #     qids = test_set.get_all_querys()
     lines = []
     labels_list = torch.unbind(labels.to(torch.int64), dim=0)
     sorted_labels = labels.sort(descending=True, dim=1).values
@@ -217,6 +190,7 @@ def job(
     model_type,
     click_type,
     data_type,
+    state_type,
     batch_size,
     discount,
     lr,
@@ -233,7 +207,6 @@ def job(
     valid_set,
     test_set,
     output_fold,
-    # logging,
 ):
 
     click_model_path = (
@@ -274,6 +247,7 @@ def job(
             rank_list_size=valid_set.rank_list_size,
             metric_type=metric_type,
             metric_topn=metric_topn,
+            state_type=state_type,
             click_model=click_model,
             target_update_step=target_update_steps,
         )
@@ -291,7 +265,6 @@ def job(
             checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                 output_fold, f, click_type, model_type, r
             ),
-            # logging=logging,
         )
         writer.close()
 
@@ -311,7 +284,6 @@ def job(
             checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                 output_fold, f, click_type, model_type, r
             ),
-            # logging=logging,
         )
 
 
@@ -331,7 +303,6 @@ if __name__ == "__main__":
 
     NORMALIZE = False
     DISCOUNT = 0.9
-    # DISCOUNT = 0
     DATA_TYPE = args.data_type
     LOGGING = args.logging  ## logging policy type
 
@@ -340,8 +311,8 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    # model_types = ["informational", "perfect"]
-    model_types = ["perfect"]
+    model_types = ["informational", "perfect"]
+    # model_types = ["perfect"]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     click_types = ["pbm"]
@@ -350,6 +321,7 @@ if __name__ == "__main__":
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
     five_fold = args.five_fold
+    state_type = args.state_type
 
     # for 5 folds
     for f in range(1, 2):
@@ -373,17 +345,6 @@ if __name__ == "__main__":
         train_set.pad(max_candidate_num)
         valid_set.pad(max_candidate_num)
         test_set.pad(test_set.rank_list_size)
-        # elif LOGGING == "initial":
-        #     train_path = "{}/Fold{}/train.txt".format(dataset_fold, f)
-        #     valid_path = "{}/Fold{}/vali.txt".format(dataset_fold, f)
-        #     if not os.path.exists(valid_path):
-        #         valid_path = "{}/Fold{}/valid.txt".format(dataset_fold, f)
-        #     test_path = "{}/Fold{}/test.txt".format(dataset_fold, f)
-        #     train_set = LetorDataset(train_path, FEATURE_SIZE)
-        #     valid_set = LetorDataset(valid_path, FEATURE_SIZE)
-        #     test_set = LetorDataset(test_path, FEATURE_SIZE)
-
-        # train_set = Raw_data(data_path=dataset_fold, file_prefix="train")
 
         processors = []
         # for 3 click_models
@@ -396,6 +357,7 @@ if __name__ == "__main__":
                         model_type,
                         click_type,
                         DATA_TYPE,
+                        state_type,
                         BATCH_SIZE,
                         DISCOUNT,
                         LR,
@@ -412,7 +374,6 @@ if __name__ == "__main__":
                         valid_set,
                         test_set,
                         output_fold,
-                        # LOGGING,
                     ),
                 )
                 p.start()

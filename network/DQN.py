@@ -13,13 +13,16 @@ class DQN(nn.Module):
     def __init__(
         self,
         feature_size,
-        rank_size,
+        state_type,
     ) -> None:
         super(DQN, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.state_dim = feature_size
-        self.state_dim = feature_size * 2
         self.action_dim = feature_size
+
+        if state_type == "pos" or state_type == "avg":
+            self.state_dim = feature_size
+        elif state_type == "pos_avg":
+            self.state_dim = 2 * feature_size
 
         # self.ln1 = nn.Linear(self.state_dim + self.action_dim, 256)
         # self.ln2 = nn.Linear(256, 256)
@@ -83,8 +86,6 @@ class DQN(nn.Module):
         output_data = F.relu(self.ln2(output_data))
         output_data = self.ln3(output_data)
 
-        # output_data = self.ln(input_data)
-
         output_shape = candidate_num * batch_size
         raw_scores_list = torch.split(output_data, output_shape, dim=0)
         output_list = []
@@ -102,7 +103,7 @@ class DQN(nn.Module):
         candidates,
         masks,
         candidate_num,
-    ):  
+    ):
 
         states = states.to(torch.float32)
         candidates = candidates.to(torch.float32)
@@ -121,7 +122,8 @@ class DQN(nn.Module):
         output_data = self.ln3(output_data)
 
         scores = output_data.reshape(-1, candidate_num)  # batch_size * candidate_num
-        scores = scores * masks.to(self.device) +\
-             (torch.ones_like(scores) * -1e8) * (1-masks.to(self.device))
+        scores = scores * masks.to(self.device) + (torch.ones_like(scores) * -1e8) * (
+            1 - masks.to(self.device)
+        )
         values, index = torch.max(scores, dim=1, keepdim=True)
         return values, index.flatten()

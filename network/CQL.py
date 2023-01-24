@@ -11,15 +11,19 @@ class Actor(nn.Module):
     def __init__(
         self,
         feature_size,
+        state_type,
     ):
         """Params:
         - `feature_size`: dimension of feature vector
         """
         super(Actor, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.state_dim = feature_size
-        self.state_dim = 2 * feature_size
         self.action_dim = feature_size
+        if state_type == "pos" or state_type == "avg":
+            self.state_dim = feature_size
+        elif state_type == "pos_avg":
+            self.state_dim = 2 * feature_size
+        
 
         self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
         self.ln2 = nn.Linear(256, 256)
@@ -132,7 +136,7 @@ class Actor(nn.Module):
 
     def softmax(self, input, t=1.0):
         """t: temperature param, the larger, the stricter bound on different between max and min probs"""
-        ex = torch.exp(input / t).clamp(min=1e-40)
+        ex = torch.exp(input / t).clamp(min=1e-10)
         return ex / torch.sum(ex, dim=-1, keepdim=True)
 
 
@@ -142,15 +146,19 @@ class Critic(nn.Module):
     def __init__(
         self,
         feature_size,
+        state_type,
     ):
         """Params:
         - `feature_size`: dimension of feature vector
         """
         super(Critic, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.state_dim = feature_size
-        self.state_dim = 2 * feature_size
         self.action_dim = feature_size
+
+        if state_type == "pos" or state_type == "avg":
+            self.state_dim = feature_size
+        elif state_type == "pos_avg":
+            self.state_dim = 2 * feature_size
 
         self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
         self.ln2 = nn.Linear(256, 256)

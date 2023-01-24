@@ -20,6 +20,7 @@ class DQNRanker(AbstractRanker):
         rank_list_size,  # considered max length of each rank list,
         metric_type,
         metric_topn,
+        state_type,  # (str) what type of state is using
         objective_metric="ndcg_10",
         target_update_step=50,  # target model update every ~ steps
         max_gradient_norm=5.0,  # Clip gradients to this norm.
@@ -41,11 +42,12 @@ class DQNRanker(AbstractRanker):
         self.target_update_step = target_update_step
         self.rank_list_size = rank_list_size
         self.max_visuable_size = max_visuable_size
+        self.state_type = state_type
         # self.dynamic_bias_eta_change = dynamic_bias_eta_change
         # self.dynamic_bias_step_interval = dynamic_bias_step_interval
         self.max_gradient_norm = max_gradient_norm
         self.click_model = click_model
-        self.model = DQN(self.feature_dim, self.rank_list_size).to(self.device)
+        self.model = DQN(self.feature_dim, self.state_type).to(self.device)
         self.target_model = copy.deepcopy(self.model).to(self.device)
         self.optimizer_func = torch.optim.Adam
         self.loss_func = F.mse_loss
@@ -153,9 +155,14 @@ class DQNRanker(AbstractRanker):
             torch.float32
         )  # cum feature states
 
-        states = torch.cat([cum_input_feature, input_position], dim=1).to(self.device)
-        # states = input_position.to(self.device)
-        # states = input_feature.to(self.device)
+        if self.state_type == "pos":
+            states = input_position.to(self.device)
+        elif self.state_type == "avg":
+            states = cum_input_feature.to(self.device)
+        elif self.state_type == "pos_avg":
+            states = torch.cat([cum_input_feature, input_position], dim=1).to(
+                self.device
+            )
         actions = input_feature.to(self.device)
 
         return self.model.forward_current(
@@ -182,9 +189,15 @@ class DQNRanker(AbstractRanker):
             torch.float32
         )  # cum feature states
 
-        states = torch.cat([cum_input_feature, input_position], dim=1).to(self.device)
-        # states = input_position.to(self.device)
-        # states = input_feature.to(self.device)
+        if self.state_type == "pos":
+            states = input_position.to(self.device)
+        elif self.state_type == "avg":
+            states = cum_input_feature.to(self.device)
+        elif self.state_type == "pos_avg":
+            states = torch.cat([cum_input_feature, input_position], dim=1).to(
+                self.device
+            )
+
         states = torch.repeat_interleave(states, candidate_num, dim=0)
         actions = torch.cat(candidate_list, dim=0).to(self.device)
         actions = torch.cat([actions] * candidate_num, dim=0)
@@ -357,15 +370,17 @@ class DQNRanker(AbstractRanker):
                 dim=0,
             )
 
-            states = torch.cat([cum_input_feature, position_input], dim=1).to(
-                self.device
-            )
-            # states = input_position.to(self.device)
-            # states = input_feature.to(self.device)
+            if self.state_type == "pos":
+                states = position_input.to(self.device)
+            elif self.state_type == "avg":
+                states = cum_input_feature.to(self.device)
+            elif self.state_type == "pos_avg":
+                states = torch.cat([cum_input_feature, position_input], dim=1).to(
+                    self.device
+                )
             states = torch.repeat_interleave(states, candidate_num, dim=0)
 
             ## get index of actions for each query
-
             _, index = self.model.forward(
                 states,
                 candidates,

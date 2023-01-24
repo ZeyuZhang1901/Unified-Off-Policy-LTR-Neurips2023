@@ -21,10 +21,10 @@ class CQLRanker(AbstractRanker):
         rank_list_size,
         metric_type,
         metric_topn,
+        state_type,  # (str) what type of state is using
         objective_metric="ndcg_10",
         target_update_step=50,  # target model update every ~ steps
         max_gradient_norm=5.0,  # Clip gradients to this norm.
-        # max_gradient_norm=1e3,  # Clip gradients to this norm.
         batch_size=256,
         discount=0.9,
         max_visuable_size=10,  # max length user can see
@@ -41,6 +41,7 @@ class CQLRanker(AbstractRanker):
         self.max_visuable_size = max_visuable_size
         self.max_gradient_norm = max_gradient_norm
         self.click_model = click_model
+        self.state_type = state_type
 
         ## soft actor-critic alpha
         # self.log_alpha = torch.tensor([0.0], requires_grad=True)
@@ -68,14 +69,14 @@ class CQLRanker(AbstractRanker):
         )
 
         ## Actor network
-        self.actor = Actor(self.feature_dim).to(self.device)
+        self.actor = Actor(self.feature_dim, self.state_type).to(self.device)
         self.actor_optimizer = optim.Adam(
             self.actor.parameters(), lr=self.learning_rate
         )
 
         ## Critic network
-        self.critic1 = Critic(self.feature_dim).to(self.device)
-        self.critic2 = Critic(self.feature_dim).to(self.device)
+        self.critic1 = Critic(self.feature_dim, self.state_type).to(self.device)
+        self.critic2 = Critic(self.feature_dim, self.state_type).to(self.device)
         assert self.critic1.parameters() != self.critic2.parameters()
 
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
@@ -357,31 +358,37 @@ class CQLRanker(AbstractRanker):
         for i in range(self.max_visuable_size):
             ## arrange input as (s, a, r, s')
 
-            # states = position_input_list[i]
-            # states = cum_input_feature_list[i]
-            states = torch.cat(
-                [cum_input_feature_list[i], position_input_list[i]], dim=1
-            )
+            if self.state_type == "pos":
+                states = position_input_list[i]
+            elif self.state_type == "avg":
+                states = cum_input_feature_list[i]
+            elif self.state_type == "pos_avg":
+                states = torch.cat(
+                    [cum_input_feature_list[i], position_input_list[i]], dim=1
+                )
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
 
             rewards = reward_input_list[i]
 
-            # next_states = (
-            #     None if i == self.max_visuable_size - 1 else position_input_list[i + 1]
-            # )
-            # next_states = (
-            #     None
-            #     if i == self.max_visuable_size - 1
-            #     else cum_input_feature_list[i + 1]
-            # )
-            next_states = (
-                None
-                if i == self.max_visuable_size - 1
-                else torch.cat(
-                    [cum_input_feature_list[i + 1], position_input_list[i + 1]], dim=1
+            if self.state_type == "pos":
+                next_states = (
+                    None if i == self.max_visuable_size - 1 else position_input_list[i + 1]
                 )
-            )
+            elif self.state_type == "avg":
+                next_states = (
+                    None
+                    if i == self.max_visuable_size - 1
+                    else cum_input_feature_list[i + 1]
+                )
+            elif self.state_type == "pos_avg":
+                next_states = (
+                    None
+                    if i == self.max_visuable_size - 1
+                    else torch.cat(
+                        [cum_input_feature_list[i + 1], position_input_list[i + 1]], dim=1
+                    )
+                )
 
             ## update actor
             # actor_loss, alpha_loss = self.update_actor(
@@ -558,11 +565,14 @@ class CQLRanker(AbstractRanker):
             )
 
             ## get index of actions for each query (index: tensor([batch_size]))
-            # index = self.get_action(position_input, candidates, masks)
-            # index = self.get_action(cum_input_feature, candidates, masks)
-            index = self.get_action(
-                torch.cat([cum_input_feature, position_input], dim=1), candidates, masks
-            )
+            if self.state_type == "pos":
+                index = self.get_action(position_input, candidates, masks)
+            elif self.state_type == "avg":
+                index = self.get_action(cum_input_feature, candidates, masks)
+            elif self.state_type == "pos_avg":
+                index = self.get_action(
+                    torch.cat([cum_input_feature, position_input], dim=1), candidates, masks
+                )
 
             docid_list.append(  # list of [1 * batch_size] tensors
                 torch.gather(self.docid_inputs, dim=0, index=index.cpu().reshape(1, -1))

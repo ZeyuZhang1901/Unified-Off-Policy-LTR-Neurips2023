@@ -24,9 +24,8 @@ parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
-parser.add_argument(
-    "--five_fold", type=bool, required=True
-)  ## dataset divided into five fold
+parser.add_argument("--five_fold", type=bool, required=True)  ## fivefold
+parser.add_argument("--state_type", type=str, required=True)  ## state type
 args = parser.parse_args()
 
 # %%
@@ -74,7 +73,7 @@ def train(
 
     ## valid initial performance
     print(f"Checkpoint at step {ranker.global_step}")
-    input_feed = valid_input_feed.get_validation_batch_svm(
+    input_feed = valid_input_feed.get_validation_batch(
         valid_set, check_validation=False
     )
     _, _, valid_summary = ranker.validation(input_feed)
@@ -94,9 +93,7 @@ def train(
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
-        input_feed = train_input_feed.get_train_batch_svm(
-            train_set, check_validation=True
-        )
+        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
         loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
@@ -104,7 +101,7 @@ def train(
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
-            input_feed = valid_input_feed.get_validation_batch_svm(
+            input_feed = valid_input_feed.get_validation_batch(
                 valid_set, check_validation=False
             )
             _, _, valid_summary = ranker.validation(input_feed)
@@ -166,7 +163,7 @@ def test(
     ranker.rank_list_size = test_set.rank_list_size
 
     ## test performance and write labels
-    input_feed_test = test_input_feed.get_validation_batch_svm(
+    input_feed_test = test_input_feed.get_validation_batch(
         test_set, check_validation=False
     )
     (
@@ -213,6 +210,7 @@ def job(
     model_type,
     click_type,
     data_type,
+    state_type,
     batch_size,
     discount,
     lr,
@@ -269,6 +267,7 @@ def job(
             rank_list_size=valid_set.rank_list_size,
             metric_type=metric_type,
             metric_topn=metric_topn,
+            state_type=state_type,
             click_model=click_model,
             target_update_step=target_update_steps,
         )
@@ -332,8 +331,8 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    # model_types = ["informational", "perfect"]
-    model_types = ["perfect"]
+    model_types = ["informational", "perfect"]
+    # model_types = ["perfect"]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     click_types = ["pbm"]
@@ -342,6 +341,7 @@ if __name__ == "__main__":
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
     five_fold = args.five_fold
+    state_type = args.state_type
 
     # for 5 folds
     for f in range(1, 2):
@@ -378,6 +378,7 @@ if __name__ == "__main__":
                         model_type,
                         click_type,
                         DATA_TYPE,
+                        state_type,
                         BATCH_SIZE,
                         DISCOUNT,
                         LR,
