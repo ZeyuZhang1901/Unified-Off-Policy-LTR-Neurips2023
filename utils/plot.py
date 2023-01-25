@@ -9,11 +9,25 @@ from tensorboard.backend.event_processing import event_accumulator
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 
-COLORS = ["b", "g", "r", "c", "m", "y", "k", "brown"]
+COLORS = [
+    "blue",
+    "green",
+    "red",
+    "cyan",
+    "magenta",
+    "yellow",
+    "black",
+    "brown",
+    "purple",
+    "pink",
+    "olive",
+    "gray",
+    "skyblue",
+    "gold",
+]
 LINE_STYLES = ["-", "--", "-."]
 
 ## to show color tables
-
 
 
 def smooth(data, weight=0.9):
@@ -337,8 +351,8 @@ if __name__ == "__main__":
     # path = whole_path + "results_mean/"
     # save_path = whole_path + "plot_mean/"
     path = whole_path + "results_svm/"
-    save_path = whole_path + "plot_svm/"
-    # save_path = whole_path + "plot_DLA/"
+    # save_path = whole_path + "plots/"
+    save_path = whole_path + "plot_cascade/"
 
     # datasets = ['MQ2008', 'MSLRWEB10K']
     # datasets = ["MQ2008"]
@@ -352,14 +366,24 @@ if __name__ == "__main__":
         "DQN_avg",
         "DQN_position",
         "DQN_position_avg",
+        "DQN_position_avg_rew",
+        "DQN_rew",
+        # "DoubleDQN_avg",
+        # "DoubleDQN_position",
+        # "DoubleDQN_position_avg",
+        # "DoubleDQN_position_avg_rew",
+        # "DoubleDQN_rew",
         "CQL_avg",
         "CQL_position",
         "CQL_position_avg",
+        "CQL_position_avg_rew",
+        "CQL_rew",
     ]
 
     # model_types = ["navigational", "informational", "perfect"]
     model_types = ["informational", "perfect"]
-    click_types = ["pbm", "cascade"]
+    # click_types = ["pbm", "cascade"]
+    click_types = ["cascade"]
 
     ## plot with fixed click model
     plot_with_fixed_click_model(

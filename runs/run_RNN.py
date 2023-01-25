@@ -3,7 +3,7 @@ import sys
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
-from ranker.DQNRanker import DQNRanker
+from ranker.RNNRanker import RNNRanker
 from ranker.input_feed import create_input_feed, Train_Input_feed, Validation_Input_feed
 from dataset import data_utils
 
@@ -22,10 +22,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--feature_size", type=int, required=True)
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
+parser.add_argument("--data_type", type=str, required=True)  # 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
 parser.add_argument("--five_fold", type=bool, required=True)  ## five-fold
-parser.add_argument("--state_type", type=str, required=True)  ## state type
 args = parser.parse_args()
 
 # %%
@@ -45,7 +44,7 @@ def train(
 
     best_perf = None
 
-    ## Load model statistics from selected checkpoints
+    ## Load actor, critic1 and critic2 statistics from selected checkpoints
     if start_checkpoint > 0:
         assert (
             start_checkpoint % steps_per_save == 0
@@ -54,10 +53,8 @@ def train(
         print(
             f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}"
         )
-        ckpt = torch.load(checkpoint_path + f"DQN(step_{start_checkpoint}).ckpt")
+        ckpt = torch.load(checkpoint_path + f"RNN(step_{start_checkpoint}).ckpt")
         ranker.model.load_state_dict(ckpt)
-        ckpt = torch.load(checkpoint_path + f"DQN_target(step_{start_checkpoint}).ckpt")
-        ranker.target_model.load_state_dict(ckpt)
 
         ranker.global_step = start_checkpoint
 
@@ -77,19 +74,16 @@ def train(
                     print("Save model, valid %s:%.3f" % (key, best_perf))
                     torch.save(
                         ranker.model.state_dict(),
-                        checkpoint_path + "DQN_best.ckpt",
+                        checkpoint_path + "RNN_best.ckpt",
                     )
                     break
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
-        input_feed = train_input_feed.get_train_batch(
-            train_set, check_validation=True
-        )
-        loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
+        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
+        loss_summary, norm_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
-        writer.add_scalars("Q Value", q_summary, ranker.global_step)
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
@@ -107,22 +101,17 @@ def train(
                             print("Save model, valid %s:%.3f" % (key, best_perf))
                             torch.save(
                                 ranker.model.state_dict(),
-                                checkpoint_path + "DQN_best.ckpt",
+                                checkpoint_path + "RNN_best.ckpt",
                             )
                             break
 
             sys.stdout.flush()
 
-        ## save model checkpoint
         if (i + 1) % steps_per_save == 0:
             print(f"Checkpoint at step {ranker.global_step} for saving")
             torch.save(
                 ranker.model.state_dict(),
-                checkpoint_path + f"DQN(step_{ranker.global_step}).ckpt",
-            )
-            torch.save(
-                ranker.target_model.state_dict(),
-                checkpoint_path + f"DQN_target(step_{ranker.global_step}).ckpt",
+                checkpoint_path + f"RNN(step_{ranker.global_step}).ckpt",
             )
 
 
@@ -132,12 +121,12 @@ def test(
     ranker,
     metric_type,
     metric_topn,
-    performance_path,  ## used to record performance on each query
+    performance_path,  # used to record performance on each query
     checkpoint_path,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path + "DQN_best.ckpt")
-    ckpt = torch.load(checkpoint_path + "DQN_best.ckpt")
+    print("Reading model parameters from %s" % checkpoint_path + "RNN_best.ckpt")
+    ckpt = torch.load(checkpoint_path + "RNN_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()
     ranker.rank_list_size = test_set.rank_list_size
@@ -190,9 +179,7 @@ def job(
     model_type,
     click_type,
     data_type,
-    state_type,
     batch_size,
-    discount,
     lr,
     max_visuable_size,
     metric_type,
@@ -201,14 +188,12 @@ def job(
     start_checkpoint,
     steps_per_checkpoint,
     steps_per_save,
-    target_update_steps,
     f,
     train_set,
     valid_set,
     test_set,
     output_fold,
 ):
-
     click_model_path = (
         whole_path
         + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
@@ -217,8 +202,8 @@ def job(
         model_desc = json.load(fin)
         click_model = cm.loadModelFromJson(model_desc)
 
+    # for r in range(1, 4):
     for r in range(1, 2):
-        # for r in range(1, 4):
         print(f"{r} Train start! click type: {click_type}\tmodel type: {model_type}")
         np.random.seed(r)
         random.seed(r)
@@ -238,18 +223,14 @@ def job(
         valid_input_feed = Validation_Input_feed(
             max_candidate_num=valid_set.rank_list_size
         )
-        ranker = DQNRanker(
+        ranker = RNNRanker(
             feature_dim=feature_size,
-            batch_size=batch_size,
-            discount=discount,
+            click_model=click_model,
             learning_rate=lr,
-            max_visuable_size=max_visuable_size,
+            batch_size=batch_size,
             rank_list_size=valid_set.rank_list_size,
             metric_type=metric_type,
             metric_topn=metric_topn,
-            state_type=state_type,
-            click_model=click_model,
-            target_update_step=target_update_steps,
         )
         train(
             train_set=train_set,
@@ -269,7 +250,6 @@ def job(
         writer.close()
 
         print(f"{r} Test start! click type: {click_type}\tmodel type: {model_type}")
-        del train_set, valid_input_feed, train_input_feed, valid_input_feed
         test_input_feed = Validation_Input_feed(
             max_candidate_num=test_set.rank_list_size
         )
@@ -288,22 +268,21 @@ def job(
         )
 
 
+# %%
 if __name__ == "__main__":
-
     torch.multiprocessing.set_start_method("spawn")
     MAX_VISUABLE_POS = 10
     FEATURE_SIZE = args.feature_size
     BATCH_SIZE = 256
-    NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
-    STEPS_PER_CHECKPOINT = 50
+    NUM_INTERACTION = 10000
     STEPS_PER_SAVE = 1000
-    TARGET_UPDATE_STEPS = 50
+    STEPS_PER_CHECKPOINT = 50
     START_CHECKPOINT = 0  # usually start from scratch
-    LR = 1e-5
+    # LR = 1e-5
+    LR = 0.1
 
     NORMALIZE = False
-    DISCOUNT = 0.9
     DATA_TYPE = args.data_type
     LOGGING = args.logging  ## logging policy type
 
@@ -314,15 +293,13 @@ if __name__ == "__main__":
     # model_types = ["informational", "perfect", "navigational"]
     # model_types = ["informational", "perfect"]
     model_types = ["perfect"]
-    # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
-    # click_types = ["pbm"]
-    click_types = ["cascade"]
+    click_types = ["pbm"]
+    # click_types = ["cascade"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
     five_fold = args.five_fold
-    state_type = args.state_type
 
     # for 5 folds
     for f in range(1, 2):
@@ -350,17 +327,15 @@ if __name__ == "__main__":
         processors = []
         # for 3 click_models
         for click_type in click_types:
-            for model_type in model_types:
+            for mode_type in model_types:
                 p = mp.Process(
                     target=job,
                     args=(
                         FEATURE_SIZE,
-                        model_type,
+                        mode_type,
                         click_type,
                         DATA_TYPE,
-                        state_type,
                         BATCH_SIZE,
-                        DISCOUNT,
                         LR,
                         MAX_VISUABLE_POS,
                         metric_type,
@@ -369,7 +344,6 @@ if __name__ == "__main__":
                         START_CHECKPOINT,
                         STEPS_PER_CHECKPOINT,
                         STEPS_PER_SAVE,
-                        TARGET_UPDATE_STEPS,
                         f,
                         train_set,
                         valid_set,

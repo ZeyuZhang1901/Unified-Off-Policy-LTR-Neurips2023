@@ -314,8 +314,8 @@ if __name__ == "__main__":
     model_types = ["perfect"]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
-    click_types = ["pbm"]
-    # click_types = ["cascade"]
+    # click_types = ["pbm"]
+    click_types = ["cascade"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold

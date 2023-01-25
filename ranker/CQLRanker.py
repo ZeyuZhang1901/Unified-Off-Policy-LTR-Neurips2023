@@ -69,14 +69,20 @@ class CQLRanker(AbstractRanker):
         )
 
         ## Actor network
-        self.actor = Actor(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
+        self.actor = Actor(
+            self.feature_dim, self.state_type, self.max_visuable_size
+        ).to(self.device)
         self.actor_optimizer = optim.Adam(
             self.actor.parameters(), lr=self.learning_rate
         )
 
         ## Critic network
-        self.critic1 = Critic(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
-        self.critic2 = Critic(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
+        self.critic1 = Critic(
+            self.feature_dim, self.state_type, self.max_visuable_size
+        ).to(self.device)
+        self.critic2 = Critic(
+            self.feature_dim, self.state_type, self.max_visuable_size
+        ).to(self.device)
         assert self.critic1.parameters() != self.critic2.parameters()
 
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
@@ -373,6 +379,9 @@ class CQLRanker(AbstractRanker):
                     [cum_input_feature_list[i], position_input_list[i], rewards_all],
                     dim=1,
                 )
+            elif self.state_type == "rew":
+                states = torch.cat(reward_input_list, dim=1)
+                states[:, i:] = 0
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
 
@@ -400,15 +409,12 @@ class CQLRanker(AbstractRanker):
                     )
                 )
             elif self.state_type == "pos_avg_rew":
-                rewards_all = torch.cat(reward_input_list, dim=1)
                 if i == self.max_visuable_size - 1:
-                    rewards_all = 0
+                    next_states = None
                 else:
+                    rewards_all = torch.cat(reward_input_list, dim=1)
                     rewards_all[:, i + 1 :] = 0
-                next_states = (
-                    None
-                    if i == self.max_visuable_size - 1
-                    else torch.cat(
+                    next_states = torch.cat(
                         [
                             cum_input_feature_list[i + 1],
                             position_input_list[i + 1],
@@ -416,7 +422,12 @@ class CQLRanker(AbstractRanker):
                         ],
                         dim=1,
                     )
-                )
+            elif self.state_type == "rew":
+                if i == self.max_visuable_size - 1:
+                    next_states = None
+                else:
+                    next_states = torch.cat(reward_input_list, dim=1)
+                    next_states[:, i + 1 :] = 0
 
             ## update actor
             # actor_loss, alpha_loss = self.update_actor(
@@ -613,6 +624,12 @@ class CQLRanker(AbstractRanker):
                         ],
                         dim=1,
                     ),
+                    candidates,
+                    masks,
+                )
+            elif self.state_type == "rew":
+                index = self.get_action(
+                    torch.zeros(local_batch_size, self.max_visuable_size),
                     candidates,
                     masks,
                 )

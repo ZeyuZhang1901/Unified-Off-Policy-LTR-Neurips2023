@@ -26,6 +26,8 @@ class DoubleDQN(nn.Module):
             self.state_dim = 2 * feature_size
         elif state_type == "pos_avg_rew":
             self.state_dim = 2 * feature_size + list_length
+        elif state_type == "rew":
+            self.state_dim = list_length
 
         # self.ln1 = nn.Linear(self.state_dim + self.action_dim, 256)
         # self.ln2 = nn.Linear(256, 256)
