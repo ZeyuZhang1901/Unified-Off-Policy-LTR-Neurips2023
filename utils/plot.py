@@ -9,8 +9,11 @@ from tensorboard.backend.event_processing import event_accumulator
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 
-COLORS = ["b", "g", "r", "c", "m", "y", "k"]
+COLORS = ["b", "g", "r", "c", "m", "y", "k", "brown"]
 LINE_STYLES = ["-", "--", "-."]
+
+## to show color tables
+
 
 
 def smooth(data, weight=0.9):
@@ -340,9 +343,20 @@ if __name__ == "__main__":
     # datasets = ['MQ2008', 'MSLRWEB10K']
     # datasets = ["MQ2008"]
     datasets = ["MSLRWEB10K"]
+
     # alg_types = ["BCQ", "DQN", "DoubleDQN", "DLA"]
     # alg_types = ["DQN", "DoubleDQN", "Bandit", "DLA"]
-    alg_types = ["DLA", "DQN", "CQL_avg", "CQL_position"]
+    alg_types = [
+        "DLA",
+        "Bandit",
+        "DQN_avg",
+        "DQN_position",
+        "DQN_position_avg",
+        "CQL_avg",
+        "CQL_position",
+        "CQL_position_avg",
+    ]
+
     # model_types = ["navigational", "informational", "perfect"]
     model_types = ["informational", "perfect"]
     click_types = ["pbm", "cascade"]

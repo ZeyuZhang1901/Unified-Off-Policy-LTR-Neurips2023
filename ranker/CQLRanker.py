@@ -69,14 +69,14 @@ class CQLRanker(AbstractRanker):
         )
 
         ## Actor network
-        self.actor = Actor(self.feature_dim, self.state_type).to(self.device)
+        self.actor = Actor(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
         self.actor_optimizer = optim.Adam(
             self.actor.parameters(), lr=self.learning_rate
         )
 
         ## Critic network
-        self.critic1 = Critic(self.feature_dim, self.state_type).to(self.device)
-        self.critic2 = Critic(self.feature_dim, self.state_type).to(self.device)
+        self.critic1 = Critic(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
+        self.critic2 = Critic(self.feature_dim, self.state_type, self.max_visuable_size).to(self.device)
         assert self.critic1.parameters() != self.critic2.parameters()
 
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
@@ -366,6 +366,13 @@ class CQLRanker(AbstractRanker):
                 states = torch.cat(
                     [cum_input_feature_list[i], position_input_list[i]], dim=1
                 )
+            elif self.state_type == "pos_avg_rew":
+                rewards_all = torch.cat(reward_input_list, dim=1)
+                rewards_all[:, i:] = 0
+                states = torch.cat(
+                    [cum_input_feature_list[i], position_input_list[i], rewards_all],
+                    dim=1,
+                )
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
 
@@ -373,7 +380,9 @@ class CQLRanker(AbstractRanker):
 
             if self.state_type == "pos":
                 next_states = (
-                    None if i == self.max_visuable_size - 1 else position_input_list[i + 1]
+                    None
+                    if i == self.max_visuable_size - 1
+                    else position_input_list[i + 1]
                 )
             elif self.state_type == "avg":
                 next_states = (
@@ -386,7 +395,26 @@ class CQLRanker(AbstractRanker):
                     None
                     if i == self.max_visuable_size - 1
                     else torch.cat(
-                        [cum_input_feature_list[i + 1], position_input_list[i + 1]], dim=1
+                        [cum_input_feature_list[i + 1], position_input_list[i + 1]],
+                        dim=1,
+                    )
+                )
+            elif self.state_type == "pos_avg_rew":
+                rewards_all = torch.cat(reward_input_list, dim=1)
+                if i == self.max_visuable_size - 1:
+                    rewards_all = 0
+                else:
+                    rewards_all[:, i + 1 :] = 0
+                next_states = (
+                    None
+                    if i == self.max_visuable_size - 1
+                    else torch.cat(
+                        [
+                            cum_input_feature_list[i + 1],
+                            position_input_list[i + 1],
+                            rewards_all,
+                        ],
+                        dim=1,
                     )
                 )
 
@@ -571,7 +599,22 @@ class CQLRanker(AbstractRanker):
                 index = self.get_action(cum_input_feature, candidates, masks)
             elif self.state_type == "pos_avg":
                 index = self.get_action(
-                    torch.cat([cum_input_feature, position_input], dim=1), candidates, masks
+                    torch.cat([cum_input_feature, position_input], dim=1),
+                    candidates,
+                    masks,
+                )
+            elif self.state_type == "pos_avg_rew":
+                index = self.get_action(
+                    torch.cat(
+                        [
+                            cum_input_feature,
+                            position_input,
+                            torch.zeros(local_batch_size, self.max_visuable_size),
+                        ],
+                        dim=1,
+                    ),
+                    candidates,
+                    masks,
                 )
 
             docid_list.append(  # list of [1 * batch_size] tensors

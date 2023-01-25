@@ -310,8 +310,8 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    model_types = ["informational", "perfect"]
-    # model_types = ["perfect"]
+    # model_types = ["informational", "perfect"]
+    model_types = ["perfect"]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     click_types = ["pbm"]

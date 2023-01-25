@@ -45,7 +45,9 @@ class DoubleDQNRanker(AbstractRanker):
         # self.dynamic_bias_step_interval = dynamic_bias_step_interval
         self.max_gradient_norm = max_gradient_norm
         self.click_model = click_model
-        self.model = DoubleDQN(self.feature_dim, self.state_type).to(self.device)
+        self.model = DoubleDQN(
+            self.feature_dim, self.state_type, self.max_visuable_size
+        ).to(self.device)
         self.target_model = copy.deepcopy(self.model).to(self.device)
         self.optimizer_func = torch.optim.Adam
         self.loss_func = F.mse_loss
@@ -136,6 +138,7 @@ class DoubleDQNRanker(AbstractRanker):
         input_feature_list,
         cum_input_feature_list,
         position_input_list,
+        reward_input_list,
     ):
 
         local_batch_size = input_feature_list[0].shape[0]
@@ -159,6 +162,17 @@ class DoubleDQNRanker(AbstractRanker):
             states = torch.cat([cum_input_feature, input_position], dim=1).to(
                 self.device
             )
+        elif self.state_type == "pos_avg_rew":
+            reward_list = []
+            rewards = torch.zeros(local_batch_size, len(reward_input_list))
+            for i in range(len(reward_input_list)):
+                rewards[:, i] = reward_input_list[i].flatten()
+                reward_list.append(copy.deepcopy(rewards))
+            rewards = torch.cat(reward_list, dim=0)
+            states = torch.cat(
+                [cum_input_feature, input_position, rewards],
+                dim=1,
+            ).to(self.device)
         actions = input_feature.to(self.device)
 
         return self.model.forward_current(
@@ -172,6 +186,7 @@ class DoubleDQNRanker(AbstractRanker):
         candidate_list,
         cum_input_feature_list,
         position_input_list,
+        reward_input_list,
     ):
 
         candidate_num = candidate_list[0].shape[0]
@@ -193,6 +208,17 @@ class DoubleDQNRanker(AbstractRanker):
             states = torch.cat([cum_input_feature, input_position], dim=1).to(
                 self.device
             )
+        elif self.state_type == "pos_avg_rew":
+            reward_list = []
+            rewards = torch.zeros(batch_size, len(reward_input_list))
+            for i in range(len(reward_input_list)):
+                rewards[:, i] = reward_input_list[i].flatten()
+                reward_list.append(copy.deepcopy(rewards))
+            rewards = torch.cat(reward_list, dim=0)
+            states = torch.cat(
+                [cum_input_feature, input_position, rewards],
+                dim=1,
+            ).to(self.device)
 
         states = torch.repeat_interleave(states, candidate_num, dim=0)
         actions = torch.cat(candidate_list, dim=0).to(self.device)
@@ -211,6 +237,7 @@ class DoubleDQNRanker(AbstractRanker):
         input_index_list,
         cum_input_feature_list,
         position_input_list,
+        reward_input_list,
     ):
         local_batch_size = self.docid_inputs.shape[1]
 
@@ -242,6 +269,17 @@ class DoubleDQNRanker(AbstractRanker):
             states = torch.cat([cum_input_feature, input_position], dim=1).to(
                 self.device
             )
+        elif self.state_type == "pos_avg_rew":
+            reward_list = []
+            rewards = torch.zeros(local_batch_size, len(reward_input_list))
+            for i in range(len(reward_input_list)):
+                rewards[:, i] = reward_input_list[i].flatten()
+                reward_list.append(copy.deepcopy(rewards))
+            rewards = torch.cat(reward_list, dim=0)
+            states = torch.cat(
+                [cum_input_feature, input_position, rewards],
+                dim=1,
+            ).to(self.device)
         actions = input_feature.to(self.device)
 
         return self.target_model.forward_current(
@@ -270,16 +308,19 @@ class DoubleDQNRanker(AbstractRanker):
             input_feature_list,
             cum_input_feature_list,
             position_input_list,
+            reward_input_list,
         )  # list of `max_visuable_sizes` tensors with shape [batch_size, 1]
         index_list = self.get_next_indexs(
             candidate_list,
             cum_input_feature_list,
             position_input_list,
+            reward_input_list,
         )
         next_scores_list = self.get_next_scores(
             index_list,
             cum_input_feature_list,
             position_input_list,
+            reward_input_list,
         )  # list of `max_visuable_sizes` tensors with shape [batch_size, 1]
 
         current_scores = torch.cat(current_scores_list, dim=1)
@@ -423,6 +464,15 @@ class DoubleDQNRanker(AbstractRanker):
                 states = torch.cat([cum_input_feature, position_input], dim=1).to(
                     self.device
                 )
+            elif self.state_type == "pos_avg_rew":
+                states = torch.cat(
+                    [
+                        cum_input_feature,
+                        position_input,
+                        torch.zeros(local_batch_size, self.max_visuable_size),
+                    ],
+                    dim=1,
+                ).to(self.device)
             states = torch.repeat_interleave(states, candidate_num, dim=0)
 
             ## get index of actions for each query

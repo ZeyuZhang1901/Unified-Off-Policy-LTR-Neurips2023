@@ -14,6 +14,7 @@ class DoubleDQN(nn.Module):
         self,
         feature_size,
         state_type,
+        list_length,
     ) -> None:
         super(DoubleDQN, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -23,6 +24,8 @@ class DoubleDQN(nn.Module):
             self.state_dim = feature_size
         elif state_type == "pos_avg":
             self.state_dim = 2 * feature_size
+        elif state_type == "pos_avg_rew":
+            self.state_dim = 2 * feature_size + list_length
 
         # self.ln1 = nn.Linear(self.state_dim + self.action_dim, 256)
         # self.ln2 = nn.Linear(256, 256)

@@ -269,6 +269,7 @@ def job(
         writer.close()
 
         print(f"{r} Test start! click type: {click_type}\tmodel type: {model_type}")
+        del train_set, valid_input_feed, train_input_feed, valid_input_feed
         test_input_feed = Validation_Input_feed(
             max_candidate_num=test_set.rank_list_size
         )
@@ -311,8 +312,8 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    model_types = ["informational", "perfect"]
-    # model_types = ["perfect"]
+    # model_types = ["informational", "perfect"]
+    model_types = ["perfect"]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     click_types = ["pbm"]
