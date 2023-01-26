@@ -45,10 +45,11 @@
                 // "initial",
 
                 "--five_fold",
-                "True",
 
                 // "--state_type",
                 // "avg_rew",
+
+                "--test_only",
             ]
             // "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K", "--output_fold", "results/MQ2008/DoubleDQN", "--rel_level", "5", "--feature_size", "136"]
         }

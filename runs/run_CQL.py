@@ -24,8 +24,9 @@ parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
-parser.add_argument("--five_fold", type=bool, required=True)  ## fivefold
 parser.add_argument("--state_type", type=str, required=True)  ## state type
+parser.add_argument("--five_fold", default=True, action="store_true")  # fivefold
+parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 args = parser.parse_args()
 
 
@@ -193,7 +194,6 @@ def test(
     ckpt = torch.load(checkpoint_path + "CQLactor_best.ckpt")
     ranker.actor.load_state_dict(ckpt)
     ranker.actor.eval()
-    ranker.rank_list_size = test_set.rank_list_size
 
     with torch.no_grad():
         test_summary = validation(test_set, test_input_feed, ranker)
@@ -202,7 +202,7 @@ def test(
     lines = []
     for metric, value in test_summary.items():
         lines.append(f"{metric}: {value}\n")
-    with open(performance_path, "a") as fin:
+    with open(performance_path, "w") as fin:
         fin.writelines(lines)
 
 
@@ -229,6 +229,7 @@ def job(
     valid_set,
     test_set,
     output_fold,
+    test_only,
 ):
 
     click_model_path = (
@@ -241,72 +242,89 @@ def job(
 
     for r in range(1, 2):
         # for r in range(1, 4):
-        print(f"{r} Train start! click type: {click_type}\tmodel type: {model_type}")
         np.random.seed(r)
         random.seed(r)
         torch.manual_seed(r)
-        writer = SummaryWriter(
-            "{}/fold{}/{}_{}_run{}/".format(output_fold, f, click_type, model_type, r)
-        )
+        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}")
 
-        max_visuable_size = min(
-            train_set.rank_list_size, valid_set.rank_list_size, max_visuable_size
-        )
-        train_input_feed = Train_Input_feed(
-            click_model=click_model,
-            max_visuable_size=max_visuable_size,
-            batch_size=batch_size,
-        )
-        valid_input_feed = Validation_Input_feed(
-            max_candidate_num=valid_set.rank_list_size,
-            batch_size=batch_size,
-        )
-        ranker = CQLRanker(
-            feature_dim=feature_size,
-            batch_size=batch_size,
-            discount=discount,
-            learning_rate=lr,
-            max_visuable_size=max_visuable_size,
-            rank_list_size=valid_set.rank_list_size,
-            metric_type=metric_type,
-            metric_topn=metric_topn,
-            state_type=state_type,
-            click_model=click_model,
-            target_update_step=target_update_steps,
-        )
-        train(
-            train_set=train_set,
-            valid_set=valid_set,
-            train_input_feed=train_input_feed,
-            valid_input_feed=valid_input_feed,
-            ranker=ranker,
-            num_iteration=num_interaction,
-            start_checkpoint=start_checkpoint,
-            writer=writer,
-            steps_per_checkpoint=steps_per_checkpoint,
-            steps_per_save=steps_per_save,
-            checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
-                output_fold, f, click_type, model_type, r
-            ),
-        )
-        writer.close()
+        if test_only:
+            max_visuable_size = min(test_set.rank_list_size, max_visuable_size)
+            test_input_feed = Validation_Input_feed(
+                max_candidate_num=test_set.rank_list_size,
+                batch_size=batch_size,
+            )
+            ranker = CQLRanker(
+                feature_dim=feature_size,
+                batch_size=batch_size,
+                discount=discount,
+                learning_rate=lr,
+                max_visuable_size=max_visuable_size,
+                rank_list_size=test_set.rank_list_size,
+                metric_type=metric_type,
+                metric_topn=metric_topn,
+                state_type=state_type,
+                click_model=click_model,
+                target_update_step=target_update_steps,
+            )
+            test(
+                test_set=test_set,
+                test_input_feed=test_input_feed,
+                ranker=ranker,
+                performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
+                    output_fold, f, click_type, model_type, r
+                ),
+                checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
+                    output_fold, f, click_type, model_type, r
+                ),
+            )
 
-        print(f"{r} Test start! click type: {click_type}\tmodel type: {model_type}")
-        test_input_feed = Validation_Input_feed(
-            max_candidate_num=test_set.rank_list_size,
-            batch_size=batch_size,
-        )
-        test(
-            test_set=test_set,
-            test_input_feed=test_input_feed,
-            ranker=ranker,
-            performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
-                output_fold, f, click_type, model_type, r
-            ),
-            checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
-                output_fold, f, click_type, model_type, r
-            ),
-        )
+        else:
+            writer = SummaryWriter(
+                "{}/fold{}/{}_{}_run{}/".format(
+                    output_fold, f, click_type, model_type, r
+                )
+            )
+            max_visuable_size = min(
+                train_set.rank_list_size, valid_set.rank_list_size, max_visuable_size
+            )
+            train_input_feed = Train_Input_feed(
+                click_model=click_model,
+                max_visuable_size=max_visuable_size,
+                batch_size=batch_size,
+            )
+            valid_input_feed = Validation_Input_feed(
+                max_candidate_num=valid_set.rank_list_size,
+                batch_size=batch_size,
+            )
+            ranker = CQLRanker(
+                feature_dim=feature_size,
+                batch_size=batch_size,
+                discount=discount,
+                learning_rate=lr,
+                max_visuable_size=max_visuable_size,
+                rank_list_size=valid_set.rank_list_size,
+                metric_type=metric_type,
+                metric_topn=metric_topn,
+                state_type=state_type,
+                click_model=click_model,
+                target_update_step=target_update_steps,
+            )
+            train(
+                train_set=train_set,
+                valid_set=valid_set,
+                train_input_feed=train_input_feed,
+                valid_input_feed=valid_input_feed,
+                ranker=ranker,
+                num_iteration=num_interaction,
+                start_checkpoint=start_checkpoint,
+                writer=writer,
+                steps_per_checkpoint=steps_per_checkpoint,
+                steps_per_save=steps_per_save,
+                checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
+                    output_fold, f, click_type, model_type, r
+                ),
+            )
+            writer.close()
 
 
 if __name__ == "__main__":
@@ -324,7 +342,6 @@ if __name__ == "__main__":
     LR = 1e-5
 
     DISCOUNT = 0.9
-    # DISCOUNT = 0
     DATA_TYPE = args.data_type
     LOGGING = args.logging  ## logging policy type
 
@@ -344,6 +361,7 @@ if __name__ == "__main__":
     output_fold = args.output_fold
     five_fold = args.five_fold
     state_type = args.state_type
+    test_only = args.test_only  # whether train or test
 
     # for 5 folds
     for f in range(1, 2):
@@ -360,13 +378,23 @@ if __name__ == "__main__":
                 else dataset_fold + "/"
             )
 
-        train_set = data_utils.read_data(path, "train", None, 0, LOGGING)
-        valid_set = data_utils.read_data(path, "valid", None, 0, LOGGING)
-        test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
-        max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
-        train_set.pad(max_candidate_num)
-        valid_set.pad(max_candidate_num)
-        test_set.pad(test_set.rank_list_size)
+        if test_only:  # Test
+            print("---------------------Test  start!------------------------")
+            test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
+            train_set, valid_set = None, None
+            max_candidate_num = test_set.rank_list_size
+            test_set.pad(test_set.rank_list_size)
+        else:  # Train
+            print("---------------------Train start!------------------------")
+            print(
+                f"Epochs: {NUM_INTERACTION}\tValid step: {STEPS_PER_CHECKPOINT}\tSave step: {STEPS_PER_SAVE}"
+            )
+            train_set = data_utils.read_data(path, "train", None, 0, LOGGING)
+            valid_set = data_utils.read_data(path, "valid", None, 0, LOGGING)
+            test_set = None
+            max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
+            train_set.pad(max_candidate_num)
+            valid_set.pad(max_candidate_num)
 
         processors = []
         # for all click models
@@ -397,7 +425,7 @@ if __name__ == "__main__":
                         valid_set,
                         test_set,
                         output_fold,
-                        # LOGGING,
+                        test_only,
                     ),
                 )
                 p.start()
