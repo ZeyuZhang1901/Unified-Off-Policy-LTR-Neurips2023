@@ -15,7 +15,6 @@
                 "--dataset_fold",
                 // "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K",
                 "/home/zeyuzhang/LearningtoRank/datasets/MQ2008",
-
                 "--output_fold",
                 // "results_test/MQ2008/RNN",
                 // "results_test/MQ2008/Bandit",
@@ -31,25 +30,20 @@
                 // "results_avg_state/MQ2008/CQL_alpha_e-6",
                 // "results_avg_state/MQ2008/CQL_alpha_e-5",
                 // "results_avg_position/MQ2008/CQL_alpha_e-6",
-
                 "--feature_size",
                 // "136",
                 "46",
-                
                 "--data_type",
                 // "web10k",
                 "mq",
-
                 "--logging",
                 "svm",
                 // "initial",
-
                 "--five_fold",
-
-                // "--state_type",
-                // "avg_rew",
-
-                "--test_only",
+                "--state_type",
+                "avg_rew",
+                // "--test_only",
+                "--embedding",
             ]
             // "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K", "--output_fold", "results/MQ2008/DoubleDQN", "--rel_level", "5", "--feature_size", "136"]
         }

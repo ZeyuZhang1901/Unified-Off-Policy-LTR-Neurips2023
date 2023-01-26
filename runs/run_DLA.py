@@ -168,7 +168,7 @@ def test(
     checkpoint_path,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path + "DLA_best.ckpt")
+    print("Reading model parameters from %s" % checkpoint_path)
     ckpt = torch.load(checkpoint_path + "DLA_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()
@@ -299,8 +299,7 @@ if __name__ == "__main__":
     MAX_VISUABLE_POS = 10
     FEATURE_SIZE = args.feature_size
     BATCH_SIZE = 256
-    NUM_INTERACTION = 500
-    # NUM_INTERACTION = 10000
+    NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
     STEPS_PER_SAVE = 1000
     STEPS_PER_CHECKPOINT = 50

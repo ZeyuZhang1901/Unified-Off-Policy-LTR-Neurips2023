@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import copy
-import random
 
 from ranker.AbstractRanker import AbstractRanker
 from ranker.input_feed import create_input_feed
@@ -29,6 +28,7 @@ class CQLRanker(AbstractRanker):
         discount=0.9,
         max_visuable_size=10,  # max length user can see
         l2_loss=0.0,  # Set strength for L2 regularization.
+        embedding=True,  # whether using rnn embedding on states
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.feature_dim = feature_dim
@@ -42,6 +42,17 @@ class CQLRanker(AbstractRanker):
         self.max_gradient_norm = max_gradient_norm
         self.click_model = click_model
         self.state_type = state_type
+        self.embedding = embedding
+        if state_type == "pos" or state_type == "avg":
+            self.state_dim = feature_dim
+        elif state_type == "pos_avg":
+            self.state_dim = 2 * feature_dim
+        elif state_type == "pos_avg_rew":
+            self.state_dim = 2 * feature_dim + max_visuable_size
+        elif state_type == "rew":
+            self.state_dim = feature_dim
+        elif state_type == "avg_rew":
+            self.state_dim = feature_dim + max_visuable_size
 
         ## soft actor-critic alpha
         # self.log_alpha = torch.tensor([0.0], requires_grad=True)
@@ -68,33 +79,48 @@ class CQLRanker(AbstractRanker):
             params=[self.cql_log_alpha], lr=self.learning_rate
         )
 
+        ## embedding network
+        if self.embedding:
+            self.num_layer = 3
+            self.embedding_model = nn.RNN(
+                self.state_dim, self.state_dim, num_layers=self.num_layer
+            ).to(self.device)
+            # self.embedding_model = nn.LSTM(
+            #     self.state_dim, self.state_dim, num_layers=self.num_layer
+            # ).to(self.device)
+
+            self.embedding_optimizer = optim.Adam(
+                self.embedding_model.parameters(),
+                lr=self.learning_rate,
+            )
+
         ## Actor network
-        self.actor = Actor(
-            self.feature_dim, self.state_type, self.max_visuable_size
-        ).to(self.device)
+        self.actor = Actor(self.feature_dim, self.state_dim).to(self.device)
+        # self.actor_optimizer = optim.Adam(
+        #     list(self.actor.parameters()) + list(self.embedding_model.parameters()),
+        #     lr=self.learning_rate,
+        # )
         self.actor_optimizer = optim.Adam(
-            self.actor.parameters(), lr=self.learning_rate
+            self.actor.parameters(),
+            lr=self.learning_rate,
         )
 
         ## Critic network
-        self.critic1 = Critic(
-            self.feature_dim, self.state_type, self.max_visuable_size
-        ).to(self.device)
-        self.critic2 = Critic(
-            self.feature_dim, self.state_type, self.max_visuable_size
-        ).to(self.device)
+        self.critic1 = Critic(self.feature_dim, self.state_dim).to(self.device)
+        self.critic2 = Critic(self.feature_dim, self.state_dim).to(self.device)
         assert self.critic1.parameters() != self.critic2.parameters()
 
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
         self.critic2_target = copy.deepcopy(self.critic2).to(self.device)
 
         self.critic1_optimizer = optim.Adam(
-            self.critic1.parameters(), lr=self.learning_rate
+            self.critic1.parameters(),
+            lr=self.learning_rate,
         )
         self.critic2_optimizer = optim.Adam(
-            self.critic2.parameters(), lr=self.learning_rate
+            self.critic2.parameters(),
+            lr=self.learning_rate,
         )
-        self.softmax = nn.Softmax(dim=-1)
 
         self.metric_type = metric_type
         self.metric_topn = metric_topn
@@ -212,11 +238,15 @@ class CQLRanker(AbstractRanker):
 
         current_alpha = copy.deepcopy(self.alpha)
         actor_loss, log_pis = self.calc_policy_loss(
-            states, candidates, masks, current_alpha
+            states.detach(), candidates.detach(), masks.detach(), current_alpha
         )
         self.actor_optimizer.zero_grad()
-        actor_loss.backward()
+        if self.embedding:
+            self.embedding_optimizer.zero_grad()
+        actor_loss.backward(retain_graph=True)
         self.actor_optimizer.step()
+        if self.embedding:
+            self.embedding_optimizer.step()
 
         # alpha_loss = -(
         #     self.log_alpha.exp()
@@ -272,11 +302,13 @@ class CQLRanker(AbstractRanker):
         """update critic. note that actions here are implemented as numbers (int)
         The last parameter indicate current position"""
 
-        q_targets = self.cal_target(next_states, candidates, rewards, masks, index)
+        q_targets = self.cal_target(
+            next_states, candidates.detach(), rewards, masks.detach(), index
+        )
 
         ## compute critic loss
-        q1 = self.critic1(states, candidates)
-        q2 = self.critic2(states, candidates)
+        q1 = self.critic1(states.detach(), candidates.detach())
+        q2 = self.critic2(states.detach(), candidates.detach())
         q1_ = q1.gather(1, actions.long())
         q2_ = q2.gather(1, actions.long())
 
@@ -309,14 +341,30 @@ class CQLRanker(AbstractRanker):
 
         ## Update critics
         self.critic1_optimizer.zero_grad()
+        if self.embedding:
+            self.embedding_optimizer.zero_grad()
         total_c1_loss.backward(retain_graph=True)
         nn.utils.clip_grad_norm_(self.critic1.parameters(), self.max_gradient_norm)
+        if self.embedding:
+            nn.utils.clip_grad_norm_(
+                self.embedding_model.parameters(), self.max_gradient_norm
+            )
         self.critic1_optimizer.step()
+        if self.embedding:
+            self.embedding_optimizer.step()
 
         self.critic2_optimizer.zero_grad()
+        if self.embedding:
+            self.embedding_optimizer.zero_grad()
         total_c2_loss.backward()
         nn.utils.clip_grad_norm_(self.critic2.parameters(), self.max_gradient_norm)
+        if self.embedding:
+            nn.utils.clip_grad_norm_(
+                self.embedding_model.parameters(), self.max_gradient_norm
+            )
         self.critic2_optimizer.step()
+        if self.embedding:
+            self.embedding_optimizer.step()
 
         return (
             critic1_loss.item(),
@@ -338,6 +386,8 @@ class CQLRanker(AbstractRanker):
         self.critic2.train()
         self.critic1_target.train()
         self.critic2_target.train()
+        if self.embedding:
+            self.embedding_model.train()
 
         (
             input_feature_list,  # action
@@ -356,11 +406,17 @@ class CQLRanker(AbstractRanker):
         total_q1_values, total_q2_values, total_q_target_values = 0, 0, 0
 
         ## Update for each position
-        candidates = torch.cat(candidates_list, dim=0)
+        candidates = torch.cat(candidates_list, dim=0).to(self.device)
         local_batch_size = len(candidates_list)
         masks = torch.ones(
             local_batch_size, self.max_visuable_size, dtype=torch.float32
         )
+        if self.embedding:
+            h_state = (
+                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                .to(self.device)
+                .to(torch.float32)
+            )  # hidden state in embedding
         for i in range(self.max_visuable_size):
             ## arrange input as (s, a, r, s')
 
@@ -389,6 +445,13 @@ class CQLRanker(AbstractRanker):
                     [cum_input_feature_list[i], rewards_all],
                     dim=1,
                 )
+            states = states.to(torch.float32).to(self.device)
+            if self.embedding:
+                states, h_state = self.embedding_model(
+                    states.reshape(-1, local_batch_size, self.state_dim),
+                    h_state,
+                )
+                states = states.reshape(1, -1, self.state_dim).squeeze()
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
 
@@ -448,6 +511,14 @@ class CQLRanker(AbstractRanker):
                         ],
                         dim=1,
                     )
+            if not (next_states == None):
+                next_states = next_states.to(torch.float32).to(self.device)
+                if self.embedding:
+                    next_states, _ = self.embedding_model(
+                        next_states.reshape(-1, local_batch_size, self.state_dim),
+                        h_state,
+                    )
+                    next_states = next_states.reshape(1, -1, self.state_dim).squeeze()
 
             ## update actor
             # actor_loss, alpha_loss = self.update_actor(
@@ -551,6 +622,8 @@ class CQLRanker(AbstractRanker):
         self.critic2.eval()
         self.critic1_target.eval()
         self.critic2_target.eval()
+        if self.embedding:
+            self.embedding_model.eval()
         self.docid_inputs, self.letor_features, self.labels = create_input_feed(
             input_feed, self.rank_list_size, self.device
         )
@@ -584,7 +657,7 @@ class CQLRanker(AbstractRanker):
                     np.take(self.letor_features, self.docid_inputs[:, i], 0)
                 )
             )
-        candidates = torch.cat(candidates_list, dim=0)
+        candidates = torch.cat(candidates_list, dim=0).to(self.device)
 
         masks = torch.ones(local_batch_size, self.rank_list_size, dtype=torch.float32)
         output = torch.zeros(
@@ -593,6 +666,12 @@ class CQLRanker(AbstractRanker):
             dtype=torch.float32,
             device=self.device,
         )
+        if self.embedding:
+            h_state = (
+                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                .to(self.device)
+                .to(torch.float32)
+            )  # hidden state in embedding
         ## construct rank list for each sampled query
         # for i in range(self.rank_list_size):  # for each rank position
         for i in range(self.max_visuable_size):  # for each considered rank position
@@ -625,46 +704,38 @@ class CQLRanker(AbstractRanker):
 
             ## get index of actions for each query (index: tensor([batch_size]))
             if self.state_type == "pos":
-                index = self.get_action(position_input, candidates, masks)
+                states = position_input
             elif self.state_type == "avg":
-                index = self.get_action(cum_input_feature, candidates, masks)
+                states = cum_input_feature
             elif self.state_type == "pos_avg":
-                index = self.get_action(
-                    torch.cat([cum_input_feature, position_input], dim=1),
-                    candidates,
-                    masks,
-                )
+                states = torch.cat([cum_input_feature, position_input], dim=1)
             elif self.state_type == "pos_avg_rew":
-                index = self.get_action(
-                    torch.cat(
-                        [
-                            cum_input_feature,
-                            position_input,
-                            torch.zeros(local_batch_size, self.max_visuable_size),
-                        ],
-                        dim=1,
-                    ),
-                    candidates,
-                    masks,
+                states = torch.cat(
+                    [
+                        cum_input_feature,
+                        position_input,
+                        torch.zeros(local_batch_size, self.max_visuable_size),
+                    ],
+                    dim=1,
                 )
             elif self.state_type == "rew":
-                index = self.get_action(
-                    torch.zeros(local_batch_size, self.max_visuable_size),
-                    candidates,
-                    masks,
-                )
+                states = torch.zeros(local_batch_size, self.max_visuable_size)
             elif self.state_type == "avg_rew":
-                index = self.get_action(
-                    torch.cat(
-                        [
-                            cum_input_feature,
-                            torch.zeros(local_batch_size, self.max_visuable_size),
-                        ],
-                        dim=1,
-                    ),
-                    candidates,
-                    masks,
+                states = torch.cat(
+                    [
+                        cum_input_feature,
+                        torch.zeros(local_batch_size, self.max_visuable_size),
+                    ],
+                    dim=1,
                 )
+            states = states.to(torch.float32).to(self.device)
+            if self.embedding:
+                states, h_state = self.embedding_model(
+                    states.reshape(-1, local_batch_size, self.state_dim),
+                    h_state,
+                )
+                states = states.reshape(1, -1, self.state_dim).squeeze()
+            index = self.get_action(states, candidates, masks)
 
             docid_list.append(  # list of [1 * batch_size] tensors
                 torch.gather(self.docid_inputs, dim=0, index=index.cpu().reshape(1, -1))

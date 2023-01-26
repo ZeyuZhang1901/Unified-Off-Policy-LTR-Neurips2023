@@ -160,7 +160,7 @@ def test(
     checkpoint_path,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path + "Bandit_best.ckpt")
+    print("Reading model parameters from %s" % checkpoint_path)
     ckpt = torch.load(checkpoint_path + "Bandit_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()

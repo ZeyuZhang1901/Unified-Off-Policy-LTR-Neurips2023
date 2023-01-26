@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import copy
-import random
 
 from ranker.AbstractRanker import AbstractRanker
 from ranker.input_feed import create_input_feed
@@ -30,6 +29,7 @@ class DoubleDQNRanker(AbstractRanker):
         # dynamic_bias_eta_change=0.0,  # Set eta change step for dynamic bias severity in training, 0.0 means no change
         # dynamic_bias_step_interval=1000,  # Set how many steps to change eta for dynamic bias severity in training, 0.0 means no change
         l2_loss=0.0,  # Set strength for L2 regularization.
+        embedding=True,  # whether using rnn embedding on states
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.feature_dim = feature_dim
@@ -44,11 +44,29 @@ class DoubleDQNRanker(AbstractRanker):
         # self.dynamic_bias_eta_change = dynamic_bias_eta_change
         # self.dynamic_bias_step_interval = dynamic_bias_step_interval
         self.max_gradient_norm = max_gradient_norm
+        self.embedding = embedding
+        if state_type == "pos" or state_type == "avg":
+            self.state_dim = feature_dim
+        elif state_type == "pos_avg":
+            self.state_dim = 2 * feature_dim
+        elif state_type == "pos_avg_rew":
+            self.state_dim = 2 * feature_dim + max_visuable_size
+        elif state_type == "rew":
+            self.state_dim = feature_dim
+        elif state_type == "avg_rew":
+            self.state_dim = feature_dim + max_visuable_size
+
         self.click_model = click_model
-        self.model = DoubleDQN(
-            self.feature_dim, self.state_type, self.max_visuable_size
-        ).to(self.device)
+        self.model = DoubleDQN(self.feature_dim, self.state_dim).to(self.device)
         self.target_model = copy.deepcopy(self.model).to(self.device)
+        if self.embedding:
+            self.num_layer = 3
+            self.embedding_model = nn.RNN(
+                self.state_dim, self.state_dim, num_layers=self.num_layer
+            ).to(self.device)
+            # self.embedding_model = nn.LSTM(
+            #     self.state_dim, self.state_dim, num_layers=self.num_layer
+            # ).to(self.device)
         self.optimizer_func = torch.optim.Adam
         self.loss_func = F.mse_loss
 
@@ -191,6 +209,12 @@ class DoubleDQNRanker(AbstractRanker):
                 [cum_input_feature, rewards],
                 dim=1,
             ).to(self.device)
+
+        if self.embedding:
+            states, _ = self.embedding_model(
+                states.reshape(-1, local_batch_size, self.state_dim)
+            )
+            states = states.reshape(1, -1, self.state_dim).squeeze()
         actions = input_feature.to(self.device)
 
         return self.model.forward_current(
@@ -256,7 +280,13 @@ class DoubleDQNRanker(AbstractRanker):
                 dim=1,
             ).to(self.device)
 
+        if self.embedding:
+            states, _ = self.embedding_model(
+                states.reshape(-1, batch_size, self.state_dim)
+            )
+            states = states.reshape(1, -1, self.state_dim).squeeze()
         states = torch.repeat_interleave(states, candidate_num, dim=0)
+
         actions = torch.cat(candidate_list, dim=0).to(self.device)
         actions = torch.cat([actions] * candidate_num, dim=0)
 
@@ -334,6 +364,12 @@ class DoubleDQNRanker(AbstractRanker):
                 [cum_input_feature, rewards],
                 dim=1,
             ).to(self.device)
+
+        if self.embedding:
+            states, _ = self.embedding_model(
+                states.reshape(-1, local_batch_size, self.state_dim)
+            )
+            states = states.reshape(1, -1, self.state_dim).squeeze()
         actions = input_feature.to(self.device)
 
         return self.target_model.forward_current(
@@ -357,6 +393,8 @@ class DoubleDQNRanker(AbstractRanker):
         )
         self.model.train()
         self.target_model.train()
+        if self.embedding:
+            self.embedding_model.train()
 
         current_scores_list = self.get_current_scores(
             input_feature_list,
@@ -403,6 +441,8 @@ class DoubleDQNRanker(AbstractRanker):
 
     def separate_gradient_update(self):
         ranking_model_params = self.model.parameters()
+        if self.embedding:
+            emb_model_params = self.embedding_model.parameters()
         # Select optimizer
 
         if self.l2_loss > 0:
@@ -412,19 +452,36 @@ class DoubleDQNRanker(AbstractRanker):
                 self.loss += self.l2_loss * torch.sum(p**2) / 2
 
         opt_ranker = self.optimizer_func(self.model.parameters(), self.learning_rate)
+        if self.embedding:
+            opt_emb= self.optimizer_func(
+                self.embedding_model.parameters(), self.learning_rate
+            )
         opt_ranker.zero_grad()
+        if self.embedding:
+            opt_emb.zero_grad()
         self.loss.backward()
 
         if self.max_gradient_norm > 0:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.max_gradient_norm)
+            if self.embedding:
+                nn.utils.clip_grad_norm_(
+                    self.embedding_model.parameters(), self.max_gradient_norm
+                )
 
         opt_ranker.step()
+        if self.embedding:
+            opt_emb.step()
 
         total_norm = 0
 
-        for p in ranking_model_params:
-            param_norm = p.grad.data.norm(2)
-            total_norm += param_norm.item() ** 2
+        if self.embedding:
+            for p in list(ranking_model_params) + list(emb_model_params):
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        else:
+            for p in ranking_model_params:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
         total_norm = total_norm ** (1.0 / 2)
         self.norm = total_norm
 
@@ -436,6 +493,8 @@ class DoubleDQNRanker(AbstractRanker):
     def validation(self, input_feed):
         self.model.eval()
         self.target_model.eval()
+        if self.embedding:
+            self.embedding_model.eval()
         self.docid_inputs, self.letor_features, self.labels = create_input_feed(
             input_feed, self.rank_list_size, self.device
         )
@@ -482,6 +541,14 @@ class DoubleDQNRanker(AbstractRanker):
             dtype=torch.float32,
             device=self.device,
         )
+        if self.embedding:
+            h_state = (
+                torch.zeros(
+                    self.num_layer, local_batch_size, self.state_dim
+                )
+                .to(self.device)
+                .to(torch.float32)
+            )  # hidden state in embedding
         for i in range(self.max_visuable_size):  # for each rank position
             ## avg features state
             if i == 0:
@@ -539,6 +606,12 @@ class DoubleDQNRanker(AbstractRanker):
                     ],
                     dim=1,
                 ).to(self.device)
+            states = states.to(torch.float32)
+            if self.embedding:
+                states, h_state = self.embedding_model(
+                    states.reshape(-1, local_batch_size, self.state_dim), h_state
+                )
+                states = states.reshape(1, -1, self.state_dim).squeeze()
             states = torch.repeat_interleave(states, candidate_num, dim=0)
 
             ## get index of actions for each query

@@ -12,24 +12,13 @@ class DQN(nn.Module):
 
     def __init__(
         self,
-        feature_size,
-        state_type,
-        list_length,
+        action_dim,
+        state_dim,
     ) -> None:
         super(DQN, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.action_dim = feature_size
-
-        if state_type == "pos" or state_type == "avg":
-            self.state_dim = feature_size
-        elif state_type == "pos_avg":
-            self.state_dim = 2 * feature_size
-        elif state_type == "pos_avg_rew":
-            self.state_dim = 2 * feature_size + list_length
-        elif state_type == "rew":
-            self.state_dim = list_length
-        elif state_type == "avg_rew":
-            self.state_dim = feature_size + list_length
+        self.action_dim = action_dim
+        self.state_dim = state_dim
 
         # self.ln1 = nn.Linear(self.state_dim + self.action_dim, 256)
         # self.ln2 = nn.Linear(256, 256)

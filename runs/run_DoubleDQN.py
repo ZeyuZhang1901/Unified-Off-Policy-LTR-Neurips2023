@@ -25,8 +25,9 @@ parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--data_type", type=str, required=True)  # 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
 parser.add_argument("--state_type", type=str, required=True)  ## state type
-parser.add_argument("--five_fold", default=True, action="store_true")  # fivefold
+parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
+parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
 args = parser.parse_args()
 
 
@@ -59,6 +60,7 @@ def train(
     steps_per_checkpoint,
     steps_per_save,
     checkpoint_path,
+    embedding,
 ):
 
     best_perf = None
@@ -78,6 +80,11 @@ def train(
             checkpoint_path + f"DoubleDQN_target(step_{start_checkpoint}).ckpt"
         )
         ranker.target_model.load_state_dict(ckpt)
+        if embedding:
+            ckpt = torch.load(
+                checkpoint_path + f"embedding(step_{start_checkpoint}).ckpt"
+            )
+            ranker.embedding_model.load_state_dict(ckpt)
 
         ranker.global_step = start_checkpoint
 
@@ -95,6 +102,11 @@ def train(
                         ranker.model.state_dict(),
                         checkpoint_path + "DoubleDQN_best.ckpt",
                     )
+                    if embedding:
+                        torch.save(
+                            ranker.embedding_model.state_dict(),
+                            checkpoint_path + "embedding_best.ckpt",
+                        )
                     break
 
     ## train and validation start
@@ -120,6 +132,11 @@ def train(
                                 ranker.model.state_dict(),
                                 checkpoint_path + "DoubleDQN_best.ckpt",
                             )
+                            if embedding:
+                                torch.save(
+                                    ranker.embedding_model.state_dict(),
+                                    checkpoint_path + "embedding_best.ckpt",
+                                )
                             break
 
             sys.stdout.flush()
@@ -135,6 +152,11 @@ def train(
                 ranker.target_model.state_dict(),
                 checkpoint_path + f"DoubleDQN_target(step_{ranker.global_step}).ckpt",
             )
+            if embedding:
+                torch.save(
+                    ranker.embedding_model.state_dict(),
+                    checkpoint_path + f"embedding(step_{ranker.global_step}).ckpt",
+                )
 
 
 def validation(
@@ -167,12 +189,17 @@ def test(
     ranker,
     performance_path,  # used to record performance on each query
     checkpoint_path,
+    embedding,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path + "DoubleDQN_best.ckpt")
+    print("Reading model parameters from %s" % checkpoint_path)
     ckpt = torch.load(checkpoint_path + "DoubleDQN_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()
+    if embedding:
+        ckpt = torch.load(checkpoint_path + "embedding_best.ckpt")
+        ranker.embedding_model.load_state_dict(ckpt)
+        ranker.embedding_model.eval()
 
     with torch.no_grad():
         test_summary = validation(test_set, test_input_feed, ranker)
@@ -209,6 +236,7 @@ def job(
     test_set,
     output_fold,
     test_only,
+    embedding,
 ):
 
     click_model_path = (
@@ -244,6 +272,7 @@ def job(
                 state_type=state_type,
                 click_model=click_model,
                 target_update_step=target_update_steps,
+                embedding=embedding,
             )
             test(
                 test_set=test_set,
@@ -255,11 +284,14 @@ def job(
                 checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                     output_fold, f, click_type, model_type, r
                 ),
+                embedding=embedding,
             )
 
         else:
             writer = SummaryWriter(
-                "{}/fold{}/{}_{}_run{}/".format(output_fold, f, click_type, model_type, r)
+                "{}/fold{}/{}_{}_run{}/".format(
+                    output_fold, f, click_type, model_type, r
+                )
             )
             max_visuable_size = min(
                 train_set.rank_list_size, valid_set.rank_list_size, max_visuable_size
@@ -285,6 +317,7 @@ def job(
                 state_type=state_type,
                 click_model=click_model,
                 target_update_step=target_update_steps,
+                embedding=embedding,
             )
             train(
                 train_set=train_set,
@@ -300,6 +333,7 @@ def job(
                 checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                     output_fold, f, click_type, model_type, r
                 ),
+                embedding=embedding,
             )
             writer.close()
 
@@ -339,6 +373,7 @@ if __name__ == "__main__":
     five_fold = args.five_fold
     state_type = args.state_type
     test_only = args.test_only  # whether train or test
+    embedding = args.embedding
 
     # for 5 folds
     for f in range(1, 2):
@@ -402,6 +437,7 @@ if __name__ == "__main__":
                         test_set,
                         output_fold,
                         test_only,
+                        embedding,
                     ),
                 )
                 p.start()
