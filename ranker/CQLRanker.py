@@ -382,6 +382,13 @@ class CQLRanker(AbstractRanker):
             elif self.state_type == "rew":
                 states = torch.cat(reward_input_list, dim=1)
                 states[:, i:] = 0
+            elif self.state_type == "avg_rew":
+                rewards_all = torch.cat(reward_input_list, dim=1)
+                rewards_all[:, i:] = 0
+                states = torch.cat(
+                    [cum_input_feature_list[i], rewards_all],
+                    dim=1,
+                )
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
 
@@ -428,6 +435,19 @@ class CQLRanker(AbstractRanker):
                 else:
                     next_states = torch.cat(reward_input_list, dim=1)
                     next_states[:, i + 1 :] = 0
+            elif self.state_type == "avg_rew":
+                if i == self.max_visuable_size - 1:
+                    next_states = None
+                else:
+                    rewards_all = torch.cat(reward_input_list, dim=1)
+                    rewards_all[:, i + 1 :] = 0
+                    next_states = torch.cat(
+                        [
+                            cum_input_feature_list[i + 1],
+                            rewards_all,
+                        ],
+                        dim=1,
+                    )
 
             ## update actor
             # actor_loss, alpha_loss = self.update_actor(
@@ -630,6 +650,18 @@ class CQLRanker(AbstractRanker):
             elif self.state_type == "rew":
                 index = self.get_action(
                     torch.zeros(local_batch_size, self.max_visuable_size),
+                    candidates,
+                    masks,
+                )
+            elif self.state_type == "avg_rew":
+                index = self.get_action(
+                    torch.cat(
+                        [
+                            cum_input_feature,
+                            torch.zeros(local_batch_size, self.max_visuable_size),
+                        ],
+                        dim=1,
+                    ),
                     candidates,
                     masks,
                 )

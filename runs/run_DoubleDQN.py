@@ -4,17 +4,17 @@ sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.DoubleDQNRanker import DoubleDQNRanker
-from ranker.input_feed import create_input_feed, Train_Input_feed, Validation_Input_feed
+from ranker.input_feed import Train_Input_feed, Validation_Input_feed
 from dataset import data_utils
 
 from clickModel import click_models as cm
-from utils import metrics
 
 import torch.multiprocessing as mp
 import numpy as np
 import random
 import torch
 import json
+import copy
 
 import argparse
 
@@ -27,6 +27,23 @@ parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
 parser.add_argument("--five_fold", type=bool, required=True)  ## five-fold
 parser.add_argument("--state_type", type=str, required=True)  ## state type
 args = parser.parse_args()
+
+
+def merge_Summary(summary_list, weights):
+    merged_values = {}
+    weight_sum_map = {}
+    for i in range(len(summary_list)):
+        summary = summary_list[i]
+        for metric in summary.keys():
+            if metric not in merged_values:
+                merged_values[metric] = 0.0
+                weight_sum_map[metric] = 0.0
+            merged_values[metric] += summary[metric] * weights[i]
+            weight_sum_map[metric] += weights[i]
+    for k in merged_values:
+        merged_values[k] /= max(0.0000001, weight_sum_map[k])
+    return merged_values
+
 
 # %%
 def train(
@@ -56,16 +73,15 @@ def train(
         )
         ckpt = torch.load(checkpoint_path + f"DoubleDQN(step_{start_checkpoint}).ckpt")
         ranker.model.load_state_dict(ckpt)
-        ckpt = torch.load(checkpoint_path + f"DoubleDQN_target(step_{start_checkpoint}).ckpt")
+        ckpt = torch.load(
+            checkpoint_path + f"DoubleDQN_target(step_{start_checkpoint}).ckpt"
+        )
         ranker.target_model.load_state_dict(ckpt)
 
         ranker.global_step = start_checkpoint
 
     print(f"Checkpoint at step {ranker.global_step}")
-    input_feed = valid_input_feed.get_validation_batch(
-        valid_set, check_validation=False
-    )
-    _, _, valid_summary = ranker.validation(input_feed)
+    valid_summary = validation(valid_set, valid_input_feed, ranker)
     writer.add_scalars("Validation", valid_summary, ranker.global_step)
     for key, value in valid_summary.items():
         print(key, value)
@@ -82,9 +98,7 @@ def train(
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
-        input_feed = train_input_feed.get_train_batch(
-            train_set, check_validation=True
-        )
+        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
         loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
@@ -92,10 +106,7 @@ def train(
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
-            input_feed = valid_input_feed.get_validation_batch(
-                valid_set, check_validation=False
-            )
-            _, _, valid_summary = ranker.validation(input_feed)
+            valid_summary = validation(valid_set, valid_input_feed, ranker)
             writer.add_scalars("Validation", valid_summary, ranker.global_step)
             for key, value in valid_summary.items():
                 print(key, value)
@@ -112,6 +123,7 @@ def train(
 
             sys.stdout.flush()
 
+        ## save model checkpoint
         if (i + 1) % steps_per_save == 0:
             print(f"Checkpoint at step {ranker.global_step} for saving")
             torch.save(
@@ -124,15 +136,36 @@ def train(
             )
 
 
+def validation(
+    dataset,
+    data_input_feed,
+    ranker,
+):
+    offset = 0
+    count_batch = 0.0
+    summary_list = []
+    batch_size_list = []
+    while offset < len(dataset.initial_list):
+        input_feed = data_input_feed.get_validation_batch(
+            offset, dataset, check_validation=False
+        )
+        _, _, summary = ranker.validation(input_feed)
+
+        ## deepcopy the summary dict
+        summary_list.append(copy.deepcopy(summary))
+        batch_size_list.append(len(input_feed["docid_input0"]))
+        offset += batch_size_list[-1]
+        count_batch += 1.0
+    valid_summary = merge_Summary(summary_list, batch_size_list)
+    return valid_summary
+
+
 def test(
     test_set,
     test_input_feed,
     ranker,
-    metric_type,
-    metric_topn,
     performance_path,  # used to record performance on each query
     checkpoint_path,
-    logging="svm",  ## indicate logging policy ('random' or 'svm')
 ):
     ## Load model with best performance
     print("Reading model parameters from %s" % checkpoint_path + "DoubleDQN_best.ckpt")
@@ -141,44 +174,13 @@ def test(
     ranker.model.eval()
     ranker.rank_list_size = test_set.rank_list_size
 
-    ## test performance and write labels
-    input_feed_test = test_input_feed.get_validation_batch(
-        test_set, check_validation=False
-    )
-    (
-        ranker.docid_inputs,
-        ranker.letor_features,
-        ranker.labels,
-    ) = create_input_feed(input_feed_test, test_set.rank_list_size, ranker.device)
-
-    metric_record = {}
     with torch.no_grad():
-        ranker.output = ranker.validation_forward()
-        pad_removed_output = ranker.remove_padding_for_metric_eval()
-        indexs = torch.sort(pad_removed_output, dim=1, descending=True).indices
-        labels = torch.gather(ranker.labels, dim=1, index=indexs)
-        for metric in metric_type:
-            topns = metric_topn
-            metric_values = metrics.make_ranking_metric_fn(metric, topns)(
-                ranker.labels, pad_removed_output, None
-            )
-            for topn, metric_value in zip(topns, metric_values):
-                metric_record[f"{metric}_{topn}"] = metric_value.item()
+        test_summary = validation(test_set, test_input_feed, ranker)
 
     ## record in `performance_path`.txt file
-    qids = test_set.qids
     lines = []
-    labels_list = torch.unbind(labels.to(torch.int64), dim=0)
-    sorted_labels = labels.sort(descending=True, dim=1).values
-    sorted_labels_list = torch.unbind(sorted_labels.to(torch.int64), dim=0)
-    for metric, value in metric_record.items():
+    for metric, value in test_summary.items():
         lines.append(f"{metric}: {value}\n")
-    lines.append("\nRank lists and ideal rank lists for each query:\n")
-    for i in range(len(qids)):
-        lines.append(f"qid: {qids[i]}\n")
-        lines.append(f"policy_label_list\t{labels_list[i].tolist()}\n")
-        lines.append(f"sorted_label_list\t{sorted_labels_list[i].tolist()}\n")
-
     with open(performance_path, "a") as fin:
         fin.writelines(lines)
 
@@ -235,7 +237,8 @@ def job(
             batch_size=batch_size,
         )
         valid_input_feed = Validation_Input_feed(
-            max_candidate_num=valid_set.rank_list_size
+            max_candidate_num=valid_set.rank_list_size,
+            batch_size=batch_size,
         )
         ranker = DoubleDQNRanker(
             feature_dim=feature_size,
@@ -269,14 +272,13 @@ def job(
 
         print(f"{r} Test start! click type: {click_type}\tmodel type: {model_type}")
         test_input_feed = Validation_Input_feed(
-            max_candidate_num=test_set.rank_list_size
+            max_candidate_num=test_set.rank_list_size,
+            batch_size=batch_size,
         )
         test(
             test_set=test_set,
             test_input_feed=test_input_feed,
             ranker=ranker,
-            metric_type=metric_type,
-            metric_topn=metric_topn,
             performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
                 output_fold, f, click_type, model_type, r
             ),
@@ -292,7 +294,8 @@ if __name__ == "__main__":
     MAX_VISUABLE_POS = 10
     FEATURE_SIZE = args.feature_size
     BATCH_SIZE = 256
-    NUM_INTERACTION = 10000
+    NUM_INTERACTION = 500
+    # NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
     STEPS_PER_CHECKPOINT = 50
     STEPS_PER_SAVE = 1000

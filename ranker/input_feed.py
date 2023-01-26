@@ -5,6 +5,7 @@ import random
 
 """Get train batch and validation batch"""
 
+
 class Train_Input_feed(object):
     def __init__(
         self,
@@ -133,8 +134,10 @@ class Validation_Input_feed(object):
     def __init__(
         self,
         max_candidate_num,
+        batch_size,
     ) -> None:
         self.max_candidate_num = max_candidate_num
+        self.batch_size = batch_size
 
     def prepare_true_labels(
         self,
@@ -175,6 +178,7 @@ class Validation_Input_feed(object):
 
     def get_validation_batch(
         self,
+        offset,  # end point of last valid batch
         dataset,
         check_validation=False,
     ):
@@ -182,8 +186,10 @@ class Validation_Input_feed(object):
         length = len(dataset.initial_list)
         docid_inputs, letor_features, labels = [], [], []
 
-        ## prepare docids, features and labels for each query
-        for index in range(length):
+        ## prepare docids, features and labels for each query in valid batch
+        remain_qid_num = length - offset
+        for i in range(min(self.batch_size, remain_qid_num)):
+            index = i + offset
             self.prepare_true_labels(
                 dataset, index, docid_inputs, letor_features, labels, check_validation
             )
