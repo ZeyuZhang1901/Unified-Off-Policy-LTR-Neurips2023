@@ -21,15 +21,14 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--state_type", type=str, required=True)  ## state type
-parser.add_argument("--model_type", type=str, required=True)
-parser.add_argument("--click_type", type=str, required=True)
+# parser.add_argument("--model_type", type=str, required=True)
+# parser.add_argument("--click_type", type=str, required=True)
 
 parser.add_argument("--data_type", default='web10k', type=str)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", default='svm', type=str)  ## 'svm' or 'initial'
 parser.add_argument("--feature_size", default=220, type=int)
-parser.add_argument("--five_fold", default=True, action="store_true")  # fivefold
-parser.add_argument("--test_only", default=False, action="store_true")  # train or test
+parser.add_argument("--five_fold", action="store_true")  # fivefold
+parser.add_argument("--test_only", action="store_true")  # train or test
 args = parser.parse_args()
 
 
@@ -318,12 +317,13 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    # model_types = ["informational", "perfect"]
-    model_types = [args.model_type]
+    model_types = ["informational", "perfect"]
+    # model_types = [args.model_type]
+
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
-    # click_types = ["pbm"]
-    click_types = [args.click_type]
+    click_types = ["cascade"]
+    # click_types = [args.click_type]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
@@ -350,6 +350,7 @@ if __name__ == "__main__":
             print(
                 f"Epochs: {NUM_INTERACTION}\tValid step: {STEPS_PER_CHECKPOINT}\tSave step: {STEPS_PER_SAVE}", flush=True
             )
+            print(path)
             train_set = data_utils.read_data(path, "train", None, 0, LOGGING)
             valid_set = data_utils.read_data(path, "valid", None, 0, LOGGING)
             max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
