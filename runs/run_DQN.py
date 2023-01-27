@@ -28,6 +28,7 @@ parser.add_argument("--state_type", type=str, required=True)  ## state type
 parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
+parser.add_argument("--embedding_type", type=str, default="RNN")  # type(rnn or lstm)
 args = parser.parse_args()
 
 
@@ -236,6 +237,7 @@ def job(
     output_fold,
     test_only,
     embedding,
+    embedding_type,
 ):
 
     click_model_path = (
@@ -272,6 +274,7 @@ def job(
                 click_model=click_model,
                 target_update_step=target_update_steps,
                 embedding=embedding,
+                embedding_type=embedding_type,
             )
             test(
                 test_set=test_set,
@@ -317,6 +320,7 @@ def job(
                 click_model=click_model,
                 target_update_step=target_update_steps,
                 embedding=embedding,
+                embedding_type=embedding_type,
             )
             train(
                 train_set=train_set,
@@ -373,6 +377,7 @@ if __name__ == "__main__":
     state_type = args.state_type
     test_only = args.test_only  # whether train or test
     embedding = args.embedding
+    embedding_type = args.embedding_type
 
     # for 5 folds
     for f in range(1, 2):
@@ -437,6 +442,7 @@ if __name__ == "__main__":
                         output_fold,
                         test_only,
                         embedding,
+                        embedding_type,
                     ),
                 )
                 p.start()

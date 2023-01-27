@@ -30,6 +30,7 @@ class DoubleDQNRanker(AbstractRanker):
         # dynamic_bias_step_interval=1000,  # Set how many steps to change eta for dynamic bias severity in training, 0.0 means no change
         l2_loss=0.0,  # Set strength for L2 regularization.
         embedding=True,  # whether using rnn embedding on states
+        embedding_type="RNN",  # type of state embedding (RNN or LSTM)
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.feature_dim = feature_dim
@@ -45,6 +46,7 @@ class DoubleDQNRanker(AbstractRanker):
         # self.dynamic_bias_step_interval = dynamic_bias_step_interval
         self.max_gradient_norm = max_gradient_norm
         self.embedding = embedding
+        self.embedding_type = embedding_type
         if state_type == "pos" or state_type == "avg":
             self.state_dim = feature_dim
         elif state_type == "pos_avg":
@@ -52,7 +54,7 @@ class DoubleDQNRanker(AbstractRanker):
         elif state_type == "pos_avg_rew":
             self.state_dim = 2 * feature_dim + max_visuable_size
         elif state_type == "rew":
-            self.state_dim = feature_dim
+            self.state_dim = max_visuable_size
         elif state_type == "avg_rew":
             self.state_dim = feature_dim + max_visuable_size
 
@@ -61,12 +63,14 @@ class DoubleDQNRanker(AbstractRanker):
         self.target_model = copy.deepcopy(self.model).to(self.device)
         if self.embedding:
             self.num_layer = 3
-            self.embedding_model = nn.RNN(
-                self.state_dim, self.state_dim, num_layers=self.num_layer
-            ).to(self.device)
-            # self.embedding_model = nn.LSTM(
-            #     self.state_dim, self.state_dim, num_layers=self.num_layer
-            # ).to(self.device)
+            if self.embedding_type == "RNN":
+                self.embedding_model = nn.RNN(
+                    self.state_dim, self.state_dim, num_layers=self.num_layer
+                ).to(self.device)
+            elif self.embedding_type == "LSTM":
+                self.embedding_model = nn.LSTM(
+                    self.state_dim, self.state_dim, num_layers=self.num_layer
+                ).to(self.device)
         self.optimizer_func = torch.optim.Adam
         self.loss_func = F.mse_loss
 
@@ -453,7 +457,7 @@ class DoubleDQNRanker(AbstractRanker):
 
         opt_ranker = self.optimizer_func(self.model.parameters(), self.learning_rate)
         if self.embedding:
-            opt_emb= self.optimizer_func(
+            opt_emb = self.optimizer_func(
                 self.embedding_model.parameters(), self.learning_rate
             )
         opt_ranker.zero_grad()
@@ -543,12 +547,16 @@ class DoubleDQNRanker(AbstractRanker):
         )
         if self.embedding:
             h_state = (
-                torch.zeros(
-                    self.num_layer, local_batch_size, self.state_dim
-                )
+                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
                 .to(self.device)
                 .to(torch.float32)
             )  # hidden state in embedding
+            if self.embedding_type == "LSTM":
+                c_state = (
+                    torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                    .to(self.device)
+                    .to(torch.float32)
+                )  # long-time hidden state in embedding
         for i in range(self.max_visuable_size):  # for each rank position
             ## avg features state
             if i == 0:
@@ -608,9 +616,14 @@ class DoubleDQNRanker(AbstractRanker):
                 ).to(self.device)
             states = states.to(torch.float32)
             if self.embedding:
-                states, h_state = self.embedding_model(
-                    states.reshape(-1, local_batch_size, self.state_dim), h_state
-                )
+                if self.embedding_type == "RNN":
+                    states, h_state = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), h_state
+                    )
+                elif self.embedding_type == "LSTM":
+                    states, (h_state, c_state) = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), (h_state, c_state)
+                    )
                 states = states.reshape(1, -1, self.state_dim).squeeze()
             states = torch.repeat_interleave(states, candidate_num, dim=0)
 

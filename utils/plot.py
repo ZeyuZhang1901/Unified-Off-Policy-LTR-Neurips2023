@@ -348,11 +348,9 @@ def plot_with_fixed_user_model_and_click_model(
 
 
 if __name__ == "__main__":
-    # path = whole_path + "results_mean/"
-    # save_path = whole_path + "plot_mean/"
-    path = whole_path + "results_svm/"
-    # save_path = whole_path + "plots/"
-    save_path = whole_path + "plot_cascade/"
+    path = whole_path + "results_embedding/"
+    save_path = whole_path + "plots_embedding/"
+    
 
     # datasets = ['MQ2008', 'MSLRWEB10K']
     # datasets = ["MQ2008"]
@@ -362,19 +360,19 @@ if __name__ == "__main__":
     # alg_types = ["DQN", "DoubleDQN", "Bandit", "DLA"]
     alg_types = [
         "DLA",
-        "Bandit",
-        "DQN_avg",
+        # "Bandit",
+        # "DQN_avg",
         # "DQN_position",
         # "DQN_position_avg",
         # "DQN_position_avg_rew",
-        "DQN_avg_rew",
-        "DQN_rew",
-        "DoubleDQN_avg",
+        # "DQN_avg_rew",
+        # "DQN_rew",
+        # "DoubleDQN_avg",
         # "DoubleDQN_position",
         # "DoubleDQN_position_avg",
         # "DoubleDQN_position_avg_rew",
-        "DoubleDQN_avg_rew",
-        "DoubleDQN_rew",
+        # "DoubleDQN_avg_rew",
+        # "DoubleDQN_rew",
         "CQL_avg",
         # "CQL_position",
         # "CQL_position_avg",
@@ -384,7 +382,8 @@ if __name__ == "__main__":
     ]
 
     # model_types = ["navigational", "informational", "perfect"]
-    model_types = ["informational", "perfect"]
+    # model_types = ["informational", "perfect"]
+    model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     click_types = ["cascade"]
 

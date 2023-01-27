@@ -1,9 +1,9 @@
 # Offline Learning to Rank Codebase
 
-Offline learning to rank (LTR) python codebase, algorithms below are or will be implemented.
+Offline learning to rank (LTR) python codebase, algorithms below are implemented.
 
-- *MDP-based*: DQN, DoubleDQN, BCQ, CQL, SAC 
-- *baselines*: Bandit, DLA (state of the art)
+- *MDP-based*: DQN, DoubleDQN, **CQL**, SAC (cql_alpha = 0) 
+- *baselines*: Bandit, **DLA** (state of the art)
 
 ## Project Structure
 
@@ -35,7 +35,32 @@ All running files are under `runs` folder, each represent an algorithm. Some arg
 - `--data_type`: str, refers to the level of relevance label. (*"mq"* refers to 3-level and *"web10k"* refers to 5-level)
 - `--logging`: str, refers to logging policy (*"svm"* or *"initial"*)
 - `--five_fold`: bool, whether the dataset is divided into five-fold.
+- `--test_only`: bool, train or test (default: train)
+
+For *RL algorithms* only, 
+
+- `--state_type`: str, indicate the design of state in MDP. 
+  - *avg*: average previous document features.
+  - *pos*: position embedding.
+  - *pos_avg*: concatenate  of position embedding and average features.
+  - *pos_avg_rew*: concatenate of position embedding, average features and previous rewards.
+  - *rew*: previous rewards.
+  - *avg_rew*:  concatenate of average features and previous rewards.
+- `--embedding`: bool, whether using states embedding (similar to NLP)
+- `--embedding_type`: str, type of embedding (*"RNN"* or *"LSTM"*)
 
 ## Results Visualization
 
-The results are collected and visualized by `tensorboard`. Run `tensorboard --logdir {output_fold}` directly.
+The results are collected and visualized by `tensorboard`. Run
+
+```bash
+tensorboard --logdir {output_fold}
+```
+
+Or directly run
+
+```bash
+python ./utils/plot.py
+```
+
+to plot evaluation curves. metrics: (mrr, ndcg) @ (3,5,10)

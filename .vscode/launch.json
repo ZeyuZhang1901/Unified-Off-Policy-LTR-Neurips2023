@@ -44,6 +44,8 @@
                 "avg_rew",
                 // "--test_only",
                 "--embedding",
+                // "--embedding_type",
+                // "LSTM",
             ]
             // "args": ["--dataset_fold", "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K", "--output_fold", "results/MQ2008/DoubleDQN", "--rel_level", "5", "--feature_size", "136"]
         }
