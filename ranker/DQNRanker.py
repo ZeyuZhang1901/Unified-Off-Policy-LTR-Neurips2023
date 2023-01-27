@@ -443,10 +443,6 @@ class DQNRanker(AbstractRanker):
         input_feature_list = []
         docid_list = []  # store chosen documents
 
-        masks = torch.ones(
-            local_batch_size, self.rank_list_size, dtype=torch.bool, device=self.device
-        )
-
         for i in range(local_batch_size):
             candidates_list.append(
                 torch.from_numpy(

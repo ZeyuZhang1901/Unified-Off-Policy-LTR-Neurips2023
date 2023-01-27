@@ -348,9 +348,8 @@ def plot_with_fixed_user_model_and_click_model(
 
 
 if __name__ == "__main__":
-    path = whole_path + "results_embedding/"
-    save_path = whole_path + "plots_embedding/"
-    
+    path = whole_path + "results_tune_rnn/"
+    save_path = whole_path + "plots/"
 
     # datasets = ['MQ2008', 'MSLRWEB10K']
     # datasets = ["MQ2008"]
@@ -373,12 +372,18 @@ if __name__ == "__main__":
         # "DoubleDQN_position_avg_rew",
         # "DoubleDQN_avg_rew",
         # "DoubleDQN_rew",
-        "CQL_avg",
+        # "CQL_avg",
         # "CQL_position",
         # "CQL_position_avg",
         # "CQL_position_avg_rew",
-        "CQL_avg_rew",
-        "CQL_rew",
+        # "CQL_avg_rew",
+        # "CQL_rew",
+        "CQL_avg_256",
+        "CQL_avg_rew_256",
+        "CQL_rew_256",
+        "CQL_avg_512",
+        "CQL_avg_rew_512",
+        "CQL_rew_512",
     ]
 
     # model_types = ["navigational", "informational", "perfect"]

@@ -24,9 +24,9 @@ parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
 parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
-parser.add_argument("--state_type", type=str, required=True)  ## state type
 parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
+parser.add_argument("--state_type", type=str, required=True)  ## state type
 parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
 parser.add_argument("--embedding_type", type=str, default="RNN")  # type(rnn or lstm)
 args = parser.parse_args()
