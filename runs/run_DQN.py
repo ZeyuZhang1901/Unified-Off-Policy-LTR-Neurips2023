@@ -19,12 +19,16 @@ import copy
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--feature_size", type=int, required=True)
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--data_type", type=str, required=True)  ## 'mq' or 'web10k'
-parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
 parser.add_argument("--state_type", type=str, required=True)  ## state type
+parser.add_argument("--model_type", type=str, required=True)
+parser.add_argument("--click_type", type=str, required=True)
+
+parser.add_argument("--data_type", default='web10k', type=str)  ## 'mq' or 'web10k'
+parser.add_argument("--logging", default='svm', type=str)  ## 'svm' or 'initial'
+parser.add_argument("--feature_size", default=220, type=int)
+
 parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
@@ -360,11 +364,11 @@ if __name__ == "__main__":
 
     # model_types = ["informational", "perfect", "navigational"]
     # model_types = ["informational", "perfect"]
-    model_types = ["perfect"]
+    model_types = [args.model_type]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     # click_types = ["pbm"]
-    click_types = ["cascade"]
+    click_types = [args.click_type]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
