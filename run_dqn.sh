@@ -14,19 +14,30 @@
 # done
 
 
-dataset_fold="/home/ykw5399/rldata/istella-letor"
+# dataset_fold="/home/ykw5399/rldata/istella-s-letor"
+# feature_size=220 #fix
+# # state_types=("pos_avg" "avg" "pos") 
+
+# state_type='pos_avg'
+# output_fold=out/istella/dqn/$state_type
+# CUDA_VISIBLE_DEVICES=2 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type
+
+
+dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 feature_size=220 #fix
 state_types=("pos_avg" "avg" "pos") 
-model_types=("informational" "perfect")
-click_types=("cascade") # "pbm" 
-for state_type in "${state_types[@]}"
+click_types=("cascade" "pbm")
+
+for clt in "${click_types[@]}"
 do
+    for state_type in "${state_types[@]}"
+    do
     echo "-----------------------------------------------------------------------------------------------"
     echo "------------------------------------------DQN--------------------------------------------------"
     output_fold=out/istella/dqn/$state_type
-    CUDA_VISIBLE_DEVICES=1 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type
+    CUDA_VISIBLE_DEVICES=2 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
+    done
 done
-
 
 
 
