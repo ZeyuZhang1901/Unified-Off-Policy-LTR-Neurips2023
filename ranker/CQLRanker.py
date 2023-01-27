@@ -609,7 +609,7 @@ class CQLRanker(AbstractRanker):
                 "\t".join(
                     ["%s:%.3f" % (key, value) for key, value in self.q_summary.items()]
                 ),
-            )
+            ), flush=True
         )
         self.global_step += 1
         return self.loss_summary, self.norm_summary, self.q_summary

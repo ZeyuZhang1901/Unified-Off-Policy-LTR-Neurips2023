@@ -60,7 +60,7 @@ class Raw_data:
         elif os.path.isfile(data_path + file_prefix + '.txt'):
             self.load_data_in_libsvm_format(data_path, file_prefix, rank_cut)
 
-        print("Finished reading %d queries with lists." % len(self.qids))
+        print("Finished reading %d queries with lists." % len(self.qids), flush=True)
 
         assert self.feature_size > 0, "No valid feature has been found."
         assert len(self.qids) > 0, "No valid query has been found."
@@ -81,7 +81,7 @@ class Raw_data:
         Returns:
             None
         """
-        print(data_path+"settings.json")
+        print(data_path+"settings.json", flush=True)
         settings = json.load(open(data_path + 'settings.json'))
         self.feature_size = settings['feature_size']
         if 'removed_feature_ids' in settings:
@@ -92,7 +92,7 @@ class Raw_data:
                         self.removed_feature_ids) - 1 - i] > self.feature_size:
                     del self.removed_feature_ids[len(
                         self.removed_feature_ids) - 1 - i]
-            print('Remove feature ids: ' + str(self.removed_feature_ids))
+            print('Remove feature ids: ' + str(self.removed_feature_ids), flush=True)
         metrics.RankingMetricKey.MAX_LABEL = settings['max_label']
         return
 
@@ -119,7 +119,7 @@ class Raw_data:
         """
         print(
             'Read data from %s/%s in ULTRA format.' %
-            (data_path, file_prefix))
+            (data_path, file_prefix), flush=True)
         self.load_basic_data_information(data_path)
 
         feature_fin = open(
@@ -143,7 +143,7 @@ class Raw_data:
         self.feature_size -= len(self.removed_feature_ids)
         feature_fin.close()
 
-        print('Feature reading finish.')
+        print('Feature reading finish.', flush=True)
 
         init_list_fin = open(
             data_path +
@@ -162,7 +162,7 @@ class Raw_data:
                 self.rank_list_size = len(self.initial_list[-1])
         init_list_fin.close()
 
-        print('List reading finish.')
+        print('List reading finish.', flush=True)
 
         label_fin = open(
             data_path +
@@ -181,11 +181,11 @@ class Raw_data:
                 for line in fin:
                     self.initial_scores.append(
                         [float(x) for x in line.strip().split(' ')[1:]])
-        print('Label reading finish.')
+        print('Label reading finish.', flush=True)
         self.initial_list_lengths = [
             len(self.initial_list[i]) for i in range(len(self.initial_list))]
         self.remove_invalid_data()
-        print('Data reading finish!')
+        print('Data reading finish!', flush=True)
         return
 
     def load_data_in_ULTRE_format(
@@ -210,7 +210,7 @@ class Raw_data:
         """
         print(
             'Read data from %s/%s in ULTRE format.' %
-            (data_path, file_prefix))
+            (data_path, file_prefix), flush=True)
         self.load_basic_data_information(data_path)
 
         feature_fin = open(
@@ -235,7 +235,7 @@ class Raw_data:
         self.feature_size -= len(self.removed_feature_ids)
         feature_fin.close()
 
-        print('Feature reading finish.')
+        print('Feature reading finish.', flush=True)
 
         init_list_fin = open(
             data_path +
@@ -253,7 +253,7 @@ class Raw_data:
                 self.rank_list_size = len(self.initial_list[-1])
         init_list_fin.close()
 
-        print('List reading finish.')
+        print('List reading finish.', flush=True)
         if os.path.isfile(data_path + file_prefix + '/' + click_model_dir +
                           file_prefix + '.labels'):
             label_fin = open(
@@ -277,11 +277,11 @@ class Raw_data:
             self.labels.append([int(x) for x in arr])
         label_fin.close()
 
-        print('Label reading finish.')
+        print('Label reading finish.', flush=True)
         self.initial_list_lengths = [
             len(self.initial_list[i]) for i in range(len(self.initial_list))]
         self.remove_invalid_ULTRE_data()
-        print('Data reading finish!')
+        print('Data reading finish!', flush=True)
         return
 
     def load_data_in_libsvm_format(
@@ -306,7 +306,7 @@ class Raw_data:
         """
         print(
             'Read data from %s/%s in libsvm format.' %
-            (data_path, file_prefix))
+            (data_path, file_prefix), flush=True)
         self.load_basic_data_information(data_path)
 
         feature_fin = open(
@@ -347,7 +347,7 @@ class Raw_data:
                 del self.features[-1][rf_idx - 1]
 
             if line_num % 10000 == 0:
-                print('Reading finish: %d lines' % line_num)
+                print('Reading finish: %d lines' % line_num, flush=True)
 
         self.feature_size -= len(self.removed_feature_ids)
         feature_fin.close()
@@ -359,7 +359,7 @@ class Raw_data:
             if self.rank_list_size < x:
                 self.rank_list_size = x
         self.remove_invalid_data()
-        print('Data reading finish!')
+        print('Data reading finish!', flush=True)
         return
 
     def remove_invalid_data(self):
@@ -387,7 +387,7 @@ class Raw_data:
             qidx = len(self.qids) - 1 - i
             if len(self.initial_list[qidx]) < 2 or sum(self.labels[qidx]) <= 0:
                 invalid_qidx.append(qidx)
-        print('Remove %d invalid queries.' % len(invalid_qidx))
+        print('Remove %d invalid queries.' % len(invalid_qidx), flush=True)
 
         ''' need to maintain the features and dids to avoid wrong index.
         invalid_didx = []
@@ -443,7 +443,7 @@ class Raw_data:
             qidx = len(self.qids) - 1 - i
             if len(self.initial_list[qidx]) < 2:
                 invalid_qidx.append(qidx)
-        print('Remove %d invalid queries.' % len(invalid_qidx))
+        print('Remove %d invalid queries.' % len(invalid_qidx), flush=True)
 
         ''' need to maintain the features and dids to avoid wrong index.
         invalid_didx = []

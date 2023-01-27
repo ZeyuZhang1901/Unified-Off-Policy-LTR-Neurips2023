@@ -145,7 +145,7 @@ class DLARanker(AbstractRanker):
         self.loss_summary["Loss"] = self.loss
         self.norm_summary["Gradient Norm"] = self.norm
         print(
-            f"Step {self.global_step}: Rank Loss {self.rank_loss}\tExam Loss {self.exam_loss}\tTotal Loss {self.loss.item()}"
+            f"Step {self.global_step}: Rank Loss {self.rank_loss}\tExam Loss {self.exam_loss}\tTotal Loss {self.loss.item()}", flush=True
         )
         self.global_step += 1
 

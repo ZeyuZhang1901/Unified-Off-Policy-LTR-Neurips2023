@@ -69,7 +69,7 @@ def train(
         ), "Invalid start checkpoint! Must be an integer multiple of `steps_per_save`"
 
         print(
-            f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}"
+            f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}",flush=True
         )
         ckpt = torch.load(checkpoint_path + f"DLA(step_{start_checkpoint}).ckpt")
         ranker.model.load_state_dict(ckpt)
@@ -81,16 +81,16 @@ def train(
         ranker.global_step = start_checkpoint
 
     ## valid initial performance
-    print(f"Checkpoint at step {ranker.global_step}")
+    print(f"Checkpoint at step {ranker.global_step}",flush=True)
     valid_summary = validation(valid_set, valid_input_feed, ranker)
     writer.add_scalars("Validation", valid_summary, ranker.global_step)
     for key, value in valid_summary.items():
-        print(key, value)
+        print(key, value,flush=True)
         if not ranker.objective_metric == None:
             if key == ranker.objective_metric:
                 if best_perf == None or best_perf < value:
                     best_perf = value
-                    print("Save model, valid %s:%.3f" % (key, best_perf))
+                    print("Save model, valid %s:%.3f" % (key, best_perf),flush=True)
                     torch.save(
                         ranker.model.state_dict(),
                         checkpoint_path + "DLA_best.ckpt",
@@ -105,16 +105,16 @@ def train(
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
 
         if (i + 1) % steps_per_checkpoint == 0:
-            print(f"Checkpoint at step {ranker.global_step}")
+            print(f"Checkpoint at step {ranker.global_step}",flush=True)
             valid_summary = validation(valid_set, valid_input_feed, ranker)
             writer.add_scalars("Validation", valid_summary, ranker.global_step)
             for key, value in valid_summary.items():
-                print(key, value)
+                print(key, value,flush=True)
                 if not ranker.objective_metric == None:
                     if key == ranker.objective_metric:
                         if best_perf == None or best_perf < value:
                             best_perf = value
-                            print("Save model, valid %s:%.3f" % (key, best_perf))
+                            print("Save model, valid %s:%.3f" % (key, best_perf),flush=True)
                             torch.save(
                                 ranker.model.state_dict(),
                                 checkpoint_path + "DLA_best.ckpt",
@@ -125,7 +125,7 @@ def train(
 
         ## save model checkpoint
         if (i + 1) % steps_per_save == 0:
-            print(f"Checkpoint at step {ranker.global_step} for saving")
+            print(f"Checkpoint at step {ranker.global_step} for saving",flush=True)
             torch.save(
                 ranker.model.state_dict(),
                 checkpoint_path + f"DLA(step_{ranker.global_step}).ckpt",
@@ -168,7 +168,7 @@ def test(
     checkpoint_path,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path)
+    print("Reading model parameters from %s" % checkpoint_path, flush=True)
     ckpt = torch.load(checkpoint_path + "DLA_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()
@@ -219,36 +219,9 @@ def job(
         np.random.seed(r)
         random.seed(r)
         torch.manual_seed(r)
-        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}")
+        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}",flush=True)
 
-        if test_only:
-            max_visuable_size = min(test_set.rank_list_size, max_visuable_size)
-            test_input_feed = Validation_Input_feed(
-                max_candidate_num=test_set.rank_list_size,
-                batch_size=batch_size,
-            )
-            ranker = DLARanker(
-                feature_size=feature_size,
-                click_model=click_model,
-                learning_rate=lr,
-                batch_size=batch_size,
-                rank_list_size=test_set.rank_list_size,
-                metric_type=metric_type,
-                metric_topn=metric_topn,
-            )
-            test(
-                test_set=test_set,
-                test_input_feed=test_input_feed,
-                ranker=ranker,
-                performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
-                    output_fold, f, click_type, model_type, r
-                ),
-                checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
-                    output_fold, f, click_type, model_type, r
-                ),
-            )
-
-        else:
+        if not test_only:
             writer = SummaryWriter(
                 "{}/fold{}/{}_{}_run{}/".format(
                     output_fold, f, click_type, model_type, r
@@ -291,6 +264,33 @@ def job(
                 ),
             )
             writer.close()
+        
+        max_visuable_size = min(test_set.rank_list_size, max_visuable_size)
+        test_input_feed = Validation_Input_feed(
+            max_candidate_num=test_set.rank_list_size,
+            batch_size=batch_size,
+        )
+        ranker = DLARanker(
+            feature_size=feature_size,
+            click_model=click_model,
+            learning_rate=lr,
+            batch_size=batch_size,
+            rank_list_size=test_set.rank_list_size,
+            metric_type=metric_type,
+            metric_topn=metric_topn,
+        )
+        test(
+            test_set=test_set,
+            test_input_feed=test_input_feed,
+            ranker=ranker,
+            performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
+                output_fold, f, click_type, model_type, r
+            ),
+            checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
+                output_fold, f, click_type, model_type, r
+            ),
+        )
+
 
 
 # %%
@@ -340,23 +340,19 @@ if __name__ == "__main__":
                 else dataset_fold + "/"
             )
 
-        if test_only:  # Test
-            print("---------------------Test  start!------------------------")
-            test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
-            train_set, valid_set = None, None
-            max_candidate_num = test_set.rank_list_size
-            test_set.pad(test_set.rank_list_size)
-        else:  # Train
-            print("---------------------Train start!------------------------")
+        if not test_only:  # Train
+            print("-------------------- Training------------------------", flush=True)
             print(
-                f"Epochs: {NUM_INTERACTION}\tValid step: {STEPS_PER_CHECKPOINT}\tSave step: {STEPS_PER_SAVE}"
+                f"Epochs: {NUM_INTERACTION}\tValid step: {STEPS_PER_CHECKPOINT}\tSave step: {STEPS_PER_SAVE}", flush=True
             )
             train_set = data_utils.read_data(path, "train", None, 0, LOGGING)
             valid_set = data_utils.read_data(path, "valid", None, 0, LOGGING)
-            test_set = None
             max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
             train_set.pad(max_candidate_num)
             valid_set.pad(max_candidate_num)
+        
+        test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
+        test_set.pad(test_set.rank_list_size)
 
         processors = []
         # for 3 click_models

@@ -351,7 +351,7 @@ class DQNRanker(AbstractRanker):
         self.q_summary["Policy_Q"] = self.policy_q
         self.q_summary["Target_Q"] = self.target_q
         print(
-            f"Step {self.global_step}\tLoss {self.loss}\tGradient Norm {self.norm}\tPolicy Q {self.policy_q}\tTarget Q {self.target_q}"
+            f"Step {self.global_step}\tLoss {self.loss}\tGradient Norm {self.norm}\tPolicy Q {self.policy_q}\tTarget Q {self.target_q}", flush=True
         )
         self.global_step += 1
 
