@@ -29,6 +29,7 @@ class CQLRanker(AbstractRanker):
         max_visuable_size=10,  # max length user can see
         l2_loss=0.0,  # Set strength for L2 regularization.
         embedding=True,  # whether using rnn embedding on states
+        embedding_type="RNN",  # type of state embedding (RNN or LSTM)
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.feature_dim = feature_dim
@@ -43,6 +44,7 @@ class CQLRanker(AbstractRanker):
         self.click_model = click_model
         self.state_type = state_type
         self.embedding = embedding
+        self.embedding_type = embedding_type
         if state_type == "pos" or state_type == "avg":
             self.state_dim = feature_dim
         elif state_type == "pos_avg":
@@ -50,7 +52,7 @@ class CQLRanker(AbstractRanker):
         elif state_type == "pos_avg_rew":
             self.state_dim = 2 * feature_dim + max_visuable_size
         elif state_type == "rew":
-            self.state_dim = feature_dim
+            self.state_dim = max_visuable_size
         elif state_type == "avg_rew":
             self.state_dim = feature_dim + max_visuable_size
 
@@ -82,12 +84,14 @@ class CQLRanker(AbstractRanker):
         ## embedding network
         if self.embedding:
             self.num_layer = 3
-            self.embedding_model = nn.RNN(
-                self.state_dim, self.state_dim, num_layers=self.num_layer
-            ).to(self.device)
-            # self.embedding_model = nn.LSTM(
-            #     self.state_dim, self.state_dim, num_layers=self.num_layer
-            # ).to(self.device)
+            if self.embedding_type == "RNN":
+                self.embedding_model = nn.RNN(
+                    self.state_dim, self.state_dim, num_layers=self.num_layer
+                ).to(self.device)
+            elif self.embedding_type == "LSTM":
+                self.embedding_model = nn.LSTM(
+                    self.state_dim, self.state_dim, num_layers=self.num_layer
+                ).to(self.device)
 
             self.embedding_optimizer = optim.Adam(
                 self.embedding_model.parameters(),
@@ -96,10 +100,6 @@ class CQLRanker(AbstractRanker):
 
         ## Actor network
         self.actor = Actor(self.feature_dim, self.state_dim).to(self.device)
-        # self.actor_optimizer = optim.Adam(
-        #     list(self.actor.parameters()) + list(self.embedding_model.parameters()),
-        #     lr=self.learning_rate,
-        # )
         self.actor_optimizer = optim.Adam(
             self.actor.parameters(),
             lr=self.learning_rate,
@@ -417,6 +417,12 @@ class CQLRanker(AbstractRanker):
                 .to(self.device)
                 .to(torch.float32)
             )  # hidden state in embedding
+            if self.embedding_type == "LSTM":
+                c_state = (
+                    torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                    .to(self.device)
+                    .to(torch.float32)
+                )  # long-time hidden state in embedding
         for i in range(self.max_visuable_size):
             ## arrange input as (s, a, r, s')
 
@@ -447,10 +453,14 @@ class CQLRanker(AbstractRanker):
                 )
             states = states.to(torch.float32).to(self.device)
             if self.embedding:
-                states, h_state = self.embedding_model(
-                    states.reshape(-1, local_batch_size, self.state_dim),
-                    h_state,
-                )
+                if self.embedding_type == "RNN":
+                    states, h_state = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), h_state
+                    )
+                elif self.embedding_type == "LSTM":
+                    states, (h_state, c_state) = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), (h_state, c_state)
+                    )
                 states = states.reshape(1, -1, self.state_dim).squeeze()
 
             actions = (torch.ones(local_batch_size, 1) * i).to(self.device)
@@ -514,10 +524,14 @@ class CQLRanker(AbstractRanker):
             if not (next_states == None):
                 next_states = next_states.to(torch.float32).to(self.device)
                 if self.embedding:
-                    next_states, _ = self.embedding_model(
-                        next_states.reshape(-1, local_batch_size, self.state_dim),
-                        h_state,
-                    )
+                    if self.embedding_type == "RNN":
+                        next_states, _ = self.embedding_model(
+                            next_states.reshape(-1, local_batch_size, self.state_dim), h_state
+                        )
+                    elif self.embedding_type == "LSTM":
+                        next_states, _ = self.embedding_model(
+                            next_states.reshape(-1, local_batch_size, self.state_dim), (h_state, c_state)
+                        )
                     next_states = next_states.reshape(1, -1, self.state_dim).squeeze()
 
             ## update actor
@@ -672,6 +686,12 @@ class CQLRanker(AbstractRanker):
                 .to(self.device)
                 .to(torch.float32)
             )  # hidden state in embedding
+            if self.embedding_type == "LSTM":
+                c_state = (
+                    torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                    .to(self.device)
+                    .to(torch.float32)
+                )  # long-time hidden state in embedding
         ## construct rank list for each sampled query
         # for i in range(self.rank_list_size):  # for each rank position
         for i in range(self.max_visuable_size):  # for each considered rank position
@@ -730,10 +750,14 @@ class CQLRanker(AbstractRanker):
                 )
             states = states.to(torch.float32).to(self.device)
             if self.embedding:
-                states, h_state = self.embedding_model(
-                    states.reshape(-1, local_batch_size, self.state_dim),
-                    h_state,
-                )
+                if self.embedding_type == "RNN":
+                    states, h_state = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), h_state
+                    )
+                elif self.embedding_type == "LSTM":
+                    states, (h_state, c_state) = self.embedding_model(
+                        states.reshape(-1, local_batch_size, self.state_dim), (h_state, c_state)
+                    )
                 states = states.reshape(1, -1, self.state_dim).squeeze()
             index = self.get_action(states, candidates, masks)
 
