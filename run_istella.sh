@@ -33,7 +33,7 @@
 #     done
 # done
 
-dataset_fold="/home/ykw5399/rldata/istella-letor"
+dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 feature_size=220 #fix
 state_types=("pos_avg" "avg" "pos") 
 model_types=("informational" "perfect")
@@ -47,7 +47,7 @@ do
         echo "-----------------------------------------------------------------------------------------------"
         echo "------------------------------------------CQL--------------------------------------------------"
         output_fold=out/istella/cql/$state_type
-        CUDA_VISIBLE_DEVICES=2 python runs/run_CQL.py --dataset_fold $dataset_fold --output_fold $output_fold --model_type $mdt --click_type $clt --state_type $state_type
+        CUDA_VISIBLE_DEVICES=0 python runs/run_CQL.py --dataset_fold $dataset_fold --output_fold $output_fold --model_type $mdt --click_type $clt --state_type $state_type
         done
     done
 done

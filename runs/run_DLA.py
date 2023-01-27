@@ -1,7 +1,7 @@
 import sys
 
-sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
+sys.path.append("/home/ykw5399/myLTR/")
+whole_path = "/home/ykw5399/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.DLARanker import DLARanker
 from ranker.input_feed import Train_Input_feed, Validation_Input_feed
