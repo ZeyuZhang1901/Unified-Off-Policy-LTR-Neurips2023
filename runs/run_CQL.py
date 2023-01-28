@@ -19,11 +19,12 @@ import copy
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset_fold", type=str, required=True)
+# parser.add_argument("--dataset_fold", type=str, required=True)
+parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--state_type", type=str, required=True)  ## state type
+parser.add_argument("--state_type", default='avg', type=str)  ## state type
 # parser.add_argument("--model_type", type=str, required=True)
-parser.add_argument("--click_type", type=str, required=True)
+parser.add_argument("--click_type", default='cascade', type=str)
 
 parser.add_argument("--data_type", default='web10k', type=str)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", default='svm', type=str)  ## 'svm' or 'initial'
@@ -32,7 +33,7 @@ parser.add_argument("--feature_size", default=220, type=int)
 parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
-parser.add_argument("--embedding_type", type=str, default="RNN")  # type(rnn or lstm)
+parser.add_argument("--embedding_type", type=str, default="None")  # type(rnn or lstm)
 args = parser.parse_args()
 
 
@@ -279,7 +280,7 @@ def job(
         np.random.seed(r)
         random.seed(r)
         torch.manual_seed(r)
-        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}", flush=True)
+        # print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}", flush=True)
 
         if not test_only:
             writer = SummaryWriter(
@@ -374,7 +375,7 @@ if __name__ == "__main__":
     BATCH_SIZE = 256
     NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
-    STEPS_PER_CHECKPOINT = 50
+    STEPS_PER_CHECKPOINT = 200
     STEPS_PER_SAVE = 1000
     TARGET_UPDATE_STEPS = 50
     START_CHECKPOINT = 0  # usually start from scratch
@@ -389,21 +390,29 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    model_types = ["informational", "perfect"]
+    model_types = ["informational"]
     # model_types = [args.model_type]
     # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
     # click_types = ["cascade"]
     click_types = [args.click_type]
 
-    dataset_fold = args.dataset_fold
+    if args.dataset == 'web10k':
+        print("Running web10k", flush=True)
+        dataset_fold = "/home/ykw5399/rldata/istella-s-letor"
+    else:
+        print("Running istella", flush=True)
+        dataset_fold = "/home/ykw5399/rldata/web10k"
+
     output_fold = args.output_fold
     five_fold = args.five_fold
     state_type = args.state_type
+    # state_type = 'avg'
     test_only = args.test_only  # whether train or test
     embedding = args.embedding
     embedding_type = args.embedding_type
 
+    print(f"state_type:{state_type}, click_type:{click_types}, model_type:{model_types}, embed:{embedding_type}", flush=True)
     # for 5 folds
     for f in range(1, 2):
         if LOGGING == "svm":

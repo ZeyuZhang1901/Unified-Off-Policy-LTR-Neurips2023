@@ -1,47 +1,41 @@
-# dataset_fold="/home/ykw5399/rldata/istella-s-etor"
-# feature_size=220 #fix
-# model_types=("perfect")
-# click_types=("cascade" "pbm" )
-# for mdt in "${model_types[@]}"
-# do
-#     for clt in "${click_types[@]}"
-#     do
-#     echo "-----------------------------------------------------------------------------------------------"
-#     echo "------------------------------------------DLA--------------------------------------------------"
-#     output_fold=out/istella/dla
-#     CUDA_VISIBLE_DEVICES=0 python runs/run_DLA.py --dataset_fold $dataset_fold --output_fold $output_fold --model_type $mdt --click_type $clt
-#     done
-# done
 
 
 # dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 # feature_size=220 #fix
-# # state_types=("pos_avg" "avg" "pos") 
+# state_types=("avg" "rew" "pos") 
+# click_types=("cascade" "pbm" "ubm")
 
-# state_type='pos_avg'
-# output_fold=out/istella/dqn/$state_type
-# CUDA_VISIBLE_DEVICES=2 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type
+# for state_type in "${state_types[@]}"
+# do
+#     for clt in "${click_types[@]}"
+#     do
+#     echo "-----------------------------------------------------------------------------------------------"
+#     echo "------------------------------------------DQN--------------------------------------------------"
+#     output_fold=out/istella/dqn/$state_type
+#     echo "data:Istella-s state_type:$state_type click_type:$clt output_fold:$output_fold"
+#     CUDA_VISIBLE_DEVICES=3 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
+#     done
+# done
 
-#"cascade"
 
 
 dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 feature_size=220 #fix
-state_types=("avg" "pos") 
-click_types=("pbm")
+state_types=("avg") 
+click_types=("cascade" "pbm" "ubm")
+embeddings=("LSTM" "RNN")
 
-for clt in "${click_types[@]}"
+for embed in "${embeddings[@]}"
 do
     for state_type in "${state_types[@]}"
     do
-    echo "-----------------------------------------------------------------------------------------------"
-    echo "------------------------------------------DQN--------------------------------------------------"
-    output_fold=out/istella/dqn/$state_type
-    CUDA_VISIBLE_DEVICES=3 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
+        for clt in "${click_types[@]}"
+        do
+        echo "-----------------------------------------------------------------------------------------------"
+        echo "------------------------------------------DQN embedding--------------------------------------------------"
+        output_fold=out/istella/dqn/$embed$state_type
+        echo "data:Istella-s state_type:$state_type click_type:$clt output_fold:$output_fold embedding:$embed"
+        CUDA_VISIBLE_DEVICES=3 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt --embedding --embedding_type $embed
+        done
     done
 done
-
-
-
-# output_fold=out/istella/dqn/$state_type
-# CUDA_VISIBLE_DEVICES=3 python runs/run_DQN.py --dataset_fold /home/ykw5399/rldata/istella-letor --output_fold out/dqn/pos_avg --model_type informational --click_type pbm --state_type pos_avg --test

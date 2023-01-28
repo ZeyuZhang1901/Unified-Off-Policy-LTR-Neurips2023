@@ -57,6 +57,7 @@ class CQLRanker(AbstractRanker):
             self.state_dim = feature_dim + max_visuable_size
 
         ## soft actor-critic alpha
+        # print("Soft critic alpha", flush=True)
         # self.log_alpha = torch.tensor([0.0], requires_grad=True)
         # self.alpha = self.log_alpha.exp().detach()
         # self.alpha_optimizer = optim.Adam(

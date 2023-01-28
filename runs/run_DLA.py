@@ -305,7 +305,7 @@ if __name__ == "__main__":
     NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
     STEPS_PER_SAVE = 1000
-    STEPS_PER_CHECKPOINT = 50
+    STEPS_PER_CHECKPOINT = 200
     START_CHECKPOINT = 0  # usually start from scratch
     LR = 1e-5
 
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     objective_metric = "ndcg_10"
 
     # model_types = ["informational", "perfect", "navigational"]
-    model_types = ["informational", "perfect"]
+    model_types = ["informational"]
     # model_types = [args.model_type]
 
     # model_types = ["informational"]

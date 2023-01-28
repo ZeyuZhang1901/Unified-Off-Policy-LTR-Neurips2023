@@ -1,4 +1,4 @@
-Data_path="/home/zeyuzhang/LearningtoRank/datasets/MSLR10K"   ## Data path where to unzip the data
+Data_path="/home/ykw5399/rldata/web10k"   ## Data path where to unzip the data
 Data_folder="Fold1"            ## subfolder after unzip
 Feature_number=136              ## how many features for LETOR data
 Prepro_fun=""                ## additional function to do preprocessing, available, "log", "None", we default normalize data to -1 and 1. If choosing log, it will first using log function to the data and then normalize it to -1 and 1. 

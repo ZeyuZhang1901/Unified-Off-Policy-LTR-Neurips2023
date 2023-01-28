@@ -1,11 +1,13 @@
+
 import sys
 
 sys.path.append("/home/ykw5399/myLTR/")
 whole_path = "/home/ykw5399/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
-from ranker.DQNRanker import DQNRanker
+from ranker.IPWRanker import IPWRanker
 from ranker.input_feed import Train_Input_feed, Validation_Input_feed
 from dataset import data_utils
+from propensityModel.propensity_estimator import RandomizedPropensityEstimator
 
 from clickModel import click_models as cm
 
@@ -21,18 +23,14 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--state_type", type=str, required=True)  ## state type
 # parser.add_argument("--model_type", type=str, required=True)
 parser.add_argument("--click_type", type=str, required=True)
 
 parser.add_argument("--data_type", default='web10k', type=str)  ## 'mq' or 'web10k'
 parser.add_argument("--logging", default='svm', type=str)  ## 'svm' or 'initial'
 parser.add_argument("--feature_size", default=220, type=int)
-
-parser.add_argument("--five_fold", default=False, action="store_true")  # fivefold
-parser.add_argument("--test_only", default=False, action="store_true")  # train or test
-parser.add_argument("--embedding", default=False, action="store_true")  # rnn emb
-parser.add_argument("--embedding_type", type=str, default="RNN")  # type(rnn or lstm)
+parser.add_argument("--five_fold", action="store_true")  # fivefold
+parser.add_argument("--test_only", action="store_true")  # train or test
 args = parser.parse_args()
 
 
@@ -65,102 +63,74 @@ def train(
     steps_per_checkpoint,
     steps_per_save,
     checkpoint_path,
-    embedding,
 ):
 
     best_perf = None
 
-    ## Load model statistics from selected checkpoints
+    ## Load actor, critic1 and critic2 statistics from selected checkpoints
     if start_checkpoint > 0:
         assert (
             start_checkpoint % steps_per_save == 0
         ), "Invalid start checkpoint! Must be an integer multiple of `steps_per_save`"
 
         print(
-            f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}", flush=True
+            f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}",flush=True
         )
-        ckpt = torch.load(checkpoint_path + f"DQN(step_{start_checkpoint}).ckpt")
+        ckpt = torch.load(checkpoint_path + f"IPW(step_{start_checkpoint}).ckpt")
         ranker.model.load_state_dict(ckpt)
-        ckpt = torch.load(checkpoint_path + f"DQN_target(step_{start_checkpoint}).ckpt")
-        ranker.target_model.load_state_dict(ckpt)
-        if embedding:
-            ckpt = torch.load(
-                checkpoint_path + f"embedding(step_{start_checkpoint}).ckpt"
-            )
-            ranker.embedding_model.load_state_dict(ckpt)
 
         ranker.global_step = start_checkpoint
 
     ## valid initial performance
-    print(f"Checkpoint at step {ranker.global_step}", flush=True)
+    print(f"Checkpoint at step {ranker.global_step}",flush=True)
     valid_summary = validation(valid_set, valid_input_feed, ranker)
     writer.add_scalars("Validation", valid_summary, ranker.global_step)
     for key, value in valid_summary.items():
-        print(key, value, flush=True)
+        print(key, value,flush=True)
         if not ranker.objective_metric == None:
             if key == ranker.objective_metric:
                 if best_perf == None or best_perf < value:
                     best_perf = value
-                    print("Save model, valid %s:%.3f" % (key, best_perf), flush=True)
+                    print("Save model, valid %s:%.3f" % (key, best_perf),flush=True)
                     torch.save(
                         ranker.model.state_dict(),
-                        checkpoint_path + "DQN_best.ckpt",
+                        checkpoint_path + "IPW_best.ckpt",
                     )
-                    if embedding:
-                        torch.save(
-                            ranker.embedding_model.state_dict(),
-                            checkpoint_path + "embedding_best.ckpt",
-                        )
                     break
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
         input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
-        loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
+        loss_summary, norm_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
-        writer.add_scalars("Q Value", q_summary, ranker.global_step)
 
         if (i + 1) % steps_per_checkpoint == 0:
-            print(f"Checkpoint at step {ranker.global_step}", flush=True)
+            print(f"Checkpoint at step {ranker.global_step}",flush=True)
             valid_summary = validation(valid_set, valid_input_feed, ranker)
             writer.add_scalars("Validation", valid_summary, ranker.global_step)
             for key, value in valid_summary.items():
-                print(key, value, flush=True)
+                print(key, value,flush=True)
                 if not ranker.objective_metric == None:
                     if key == ranker.objective_metric:
                         if best_perf == None or best_perf < value:
                             best_perf = value
-                            print("Save model, valid %s:%.3f" % (key, best_perf), flush=True)
+                            print("Save model, valid %s:%.3f" % (key, best_perf),flush=True)
                             torch.save(
                                 ranker.model.state_dict(),
-                                checkpoint_path + "DQN_best.ckpt",
+                                checkpoint_path + "IPW_best.ckpt",
                             )
-                            if embedding:
-                                torch.save(
-                                    ranker.embedding_model.state_dict(),
-                                    checkpoint_path + "embedding_best.ckpt",
-                                )
                             break
 
             sys.stdout.flush()
 
         ## save model checkpoint
         if (i + 1) % steps_per_save == 0:
-            print(f"Checkpoint at step {ranker.global_step} for saving", flush=True)
+            print(f"Checkpoint at step {ranker.global_step} for saving",flush=True)
             torch.save(
                 ranker.model.state_dict(),
-                checkpoint_path + f"DQN(step_{ranker.global_step}).ckpt",
+                checkpoint_path + f"IPW(step_{ranker.global_step}).ckpt",
             )
-            torch.save(
-                ranker.target_model.state_dict(),
-                checkpoint_path + f"DQN_target(step_{ranker.global_step}).ckpt",
-            )
-            if embedding:
-                torch.save(
-                    ranker.embedding_model.state_dict(),
-                    checkpoint_path + f"embedding(step_{ranker.global_step}).ckpt",
-                )
 
 
 def validation(
@@ -191,19 +161,14 @@ def test(
     test_set,
     test_input_feed,
     ranker,
-    performance_path,  ## used to record performance on each query
+    performance_path,  # used to record performance on each query
     checkpoint_path,
-    embedding,
 ):
     ## Load model with best performance
-    print("Reading model parameters from %s" % checkpoint_path, flush=True)
-    ckpt = torch.load(checkpoint_path + "DQN_best.ckpt")
+    print("Reading model parameters from %s" % checkpoint_path,flush=True)
+    ckpt = torch.load(checkpoint_path + "IPW_best.ckpt")
     ranker.model.load_state_dict(ckpt)
     ranker.model.eval()
-    if embedding:
-        ckpt = torch.load(checkpoint_path + "embedding_best.ckpt")
-        ranker.embedding_model.load_state_dict(ckpt)
-        ranker.embedding_model.eval()
 
     with torch.no_grad():
         test_summary = validation(test_set, test_input_feed, ranker)
@@ -222,9 +187,7 @@ def job(
     model_type,
     click_type,
     data_type,
-    state_type,
     batch_size,
-    discount,
     lr,
     max_visuable_size,
     metric_type,
@@ -233,17 +196,13 @@ def job(
     start_checkpoint,
     steps_per_checkpoint,
     steps_per_save,
-    target_update_steps,
     f,
     train_set,
     valid_set,
     test_set,
     output_fold,
     test_only,
-    embedding,
-    embedding_type,
 ):
-
     click_model_path = (
         whole_path
         + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
@@ -252,12 +211,18 @@ def job(
         model_desc = json.load(fin)
         click_model = cm.loadModelFromJson(model_desc)
 
+    propensity_model_path = (
+        whole_path
+        + f"propensityModel/model_files/{click_type}_{data_type}_{model_type}.json"
+    )
+    propensity_estimator = RandomizedPropensityEstimator(propensity_model_path)
+
+    # for r in range(1, 4):
     for r in range(1, 2):
-        # for r in range(1, 4):
         np.random.seed(r)
         random.seed(r)
         torch.manual_seed(r)
-        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}", flush=True)
+        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}",flush=True)
 
         if not test_only:
             writer = SummaryWriter(
@@ -277,20 +242,16 @@ def job(
                 max_candidate_num=valid_set.rank_list_size,
                 batch_size=batch_size,
             )
-            ranker = DQNRanker(
-                feature_dim=feature_size,
-                batch_size=batch_size,
-                discount=discount,
+            ranker = IPWRanker(
+                feature_size=feature_size,
+                click_model=click_model,
+                propensity_estimator=propensity_estimator,
                 learning_rate=lr,
-                max_visuable_size=max_visuable_size,
+                batch_size=batch_size,
                 rank_list_size=valid_set.rank_list_size,
                 metric_type=metric_type,
                 metric_topn=metric_topn,
-                state_type=state_type,
-                click_model=click_model,
-                target_update_step=target_update_steps,
-                embedding=embedding,
-                embedding_type=embedding_type,
+                max_visuable_size=max_visuable_size,
             )
             train(
                 train_set=train_set,
@@ -306,29 +267,24 @@ def job(
                 checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                     output_fold, f, click_type, model_type, r
                 ),
-                embedding=embedding,
             )
             writer.close()
-        
+
         max_visuable_size = min(test_set.rank_list_size, max_visuable_size)
         test_input_feed = Validation_Input_feed(
             max_candidate_num=test_set.rank_list_size,
             batch_size=batch_size,
         )
-        ranker = DQNRanker(
-            feature_dim=feature_size,
-            batch_size=batch_size,
-            discount=discount,
+        ranker = IPWRanker(
+            feature_size=feature_size,
+            click_model=click_model,
+            propensity_estimator=propensity_estimator,
             learning_rate=lr,
-            max_visuable_size=max_visuable_size,
+            batch_size=batch_size,
             rank_list_size=test_set.rank_list_size,
             metric_type=metric_type,
             metric_topn=metric_topn,
-            state_type=state_type,
-            click_model=click_model,
-            target_update_step=target_update_steps,
-            embedding=embedding,
-            embedding_type=embedding_type,
+            max_visuable_size=max_visuable_size,
         )
         test(
             test_set=test_set,
@@ -340,25 +296,22 @@ def job(
             checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
                 output_fold, f, click_type, model_type, r
             ),
-            embedding=embedding,
-        )  
+        )
 
 
+# %%
 if __name__ == "__main__":
-
     torch.multiprocessing.set_start_method("spawn")
     MAX_VISUABLE_POS = 10
     FEATURE_SIZE = args.feature_size
     BATCH_SIZE = 256
     NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
-    STEPS_PER_CHECKPOINT = 200
     STEPS_PER_SAVE = 1000
-    TARGET_UPDATE_STEPS = 50
+    STEPS_PER_CHECKPOINT = 200
     START_CHECKPOINT = 0  # usually start from scratch
     LR = 1e-5
 
-    DISCOUNT = 0.9
     DATA_TYPE = args.data_type
     LOGGING = args.logging  ## logging policy type
 
@@ -369,18 +322,15 @@ if __name__ == "__main__":
     # model_types = ["informational", "perfect", "navigational"]
     # model_types = ["informational", "perfect"]
     model_types = ["informational"]
-    # model_types = ["informational"]
     # click_types = ["pbm", "cascade"]
-    # click_types = ["cascade"]
+    # click_types = ["pbm"]
     click_types = [args.click_type]
+    # click_types = ["cascade"]
 
     dataset_fold = args.dataset_fold
     output_fold = args.output_fold
     five_fold = args.five_fold
-    state_type = args.state_type
     test_only = args.test_only  # whether train or test
-    embedding = args.embedding
-    embedding_type = args.embedding_type
 
     # for 5 folds
     for f in range(1, 2):
@@ -414,17 +364,15 @@ if __name__ == "__main__":
         processors = []
         # for 3 click_models
         for click_type in click_types:
-            for model_type in model_types:
+            for mode_type in model_types:
                 p = mp.Process(
                     target=job,
                     args=(
                         FEATURE_SIZE,
-                        model_type,
+                        mode_type,
                         click_type,
                         DATA_TYPE,
-                        state_type,
                         BATCH_SIZE,
-                        DISCOUNT,
                         LR,
                         MAX_VISUABLE_POS,
                         metric_type,
@@ -433,15 +381,12 @@ if __name__ == "__main__":
                         START_CHECKPOINT,
                         STEPS_PER_CHECKPOINT,
                         STEPS_PER_SAVE,
-                        TARGET_UPDATE_STEPS,
                         f,
                         train_set,
                         valid_set,
                         test_set,
                         output_fold,
                         test_only,
-                        embedding,
-                        embedding_type,
                     ),
                 )
                 p.start()
@@ -450,3 +395,4 @@ if __name__ == "__main__":
             break
     for p in processors:
         p.join()
+
