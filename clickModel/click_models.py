@@ -10,6 +10,8 @@ def loadModelFromJson(model_desc):
         click_model = UserBrowsingModel()
     elif model_desc['model_name'] == 'cascade_model':
         click_model = CascadeModel()
+    elif model_desc['model_name'] == 'dependent_click_model':
+        click_model = DependentClickModel()
     click_model.eta = model_desc['eta']
     click_model.click_prob = model_desc['click_prob']
     click_model.exam_prob = model_desc['exam_prob']
@@ -230,6 +232,81 @@ class CascadeModel(ClickModel):
             self.click_prob) else -1]
         click = 1 if random.random() < exam_p * click_p else 0
         return click, exam_p, click_p
+
+    def getExamProb(self, rank):
+        return self.exam_prob[rank if rank < len(self.exam_prob) else -1]
+
+class DependentClickModel(ClickModel):
+    @property
+    def model_name(self):
+        return "dependent_click_model"
+
+    def setExamProb(self, eta):
+        self.eta = eta
+        self.original_exam_prob = [
+            1.00,
+            0.50,
+            0.333,
+            0.25,
+            0.20,
+            0.167,
+            0.143,
+            0.125,
+            0.111,
+            0.1,
+        ]
+        self.exam_prob = [pow(x, eta) for x in self.original_exam_prob]
+
+    def sampleClicksForOneList(self, label_list):
+        click_list, exam_p_list, click_p_list = [], [], []
+        last_click = False
+        done = False
+        for rank in range(len(label_list)):
+            exam, click, exam_p, click_p = self.sampleClick(
+                rank, last_click, label_list[rank]
+            )
+            if done:
+                click_list.append(0.0)
+                exam_p_list.append(0.0)
+            else:
+                click_list.append(click)
+                exam_p_list.append(exam_p)
+            click_p_list.append(click_p)
+            if click > 0:
+                last_click = True
+            if exam == 0:
+                done = True
+        return click_list, exam_p_list, click_p_list
+
+    def estimatePropensityWeightsForOneList(
+        self, click_list, use_non_clicked_data=False
+    ):
+        propensity_weights = []
+        for r in range(len(click_list)):
+            pw = 0.0
+            if use_non_clicked_data | click_list[r] > 0:
+                pw = 1.0 / self.getExamProb(r) * self.getExamProb(0)
+            propensity_weights.append(pw)
+        return propensity_weights
+
+    def sampleClick(self, rank, last_click, relevance_label):
+        if not relevance_label == int(relevance_label):
+            print("RELEVANCE LABEL MUST BE INTEGER!")
+        relevance_label = int(relevance_label) if relevance_label > 0 else 0
+        exam_p = (
+            self.getExamProb(rank)
+            if last_click
+            else (1.0 if rank < len(self.exam_prob) else -1)
+        )
+        click_p = self.click_prob[
+            relevance_label if relevance_label < len(self.click_prob) else -1
+        ]
+        exam = 1 if random.random() < exam_p else 0
+        if exam > 0:
+            click = 1 if random.random() < click_p else 0
+        else:
+            click = 0
+        return exam, click, exam_p, click_p
 
     def getExamProb(self, rank):
         return self.exam_prob[rank if rank < len(self.exam_prob) else -1]
