@@ -1,7 +1,3 @@
-
-
-
-
 dataset='web10k'
 feature_size=136 #fix
 state_type='avg'
@@ -11,7 +7,7 @@ do
     echo "-----------------------------------------------------------------------------------------------"
     echo "------------------------------------------CQL--------------------------------------------------"
     output_fold=out/web10k/cql/$state_type
-    CUDA_VISIBLE_DEVICES=2 python runs/run_CQL.py --dataset $dataset --output_fold $output_fold --click_type $clt --state_type $state_type
+    CUDA_VISIBLE_DEVICES=2 python runs/run_CQL.py --dataset $dataset --output_fold $output_fold --click_type $clt --state_type $state_type --feature_size $feature_size
 done
 
 # state_type='rew'

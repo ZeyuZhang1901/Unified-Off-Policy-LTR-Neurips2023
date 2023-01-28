@@ -15,7 +15,7 @@ import random
 import torch
 import json
 import copy
-
+import time
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -266,7 +266,7 @@ def job(
     embedding,
     embedding_type,
 ):
-
+    start_time = time.time()
     click_model_path = (
         whole_path
         + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
@@ -365,13 +365,13 @@ def job(
             ),
             embedding=embedding,
         )
+        print(f'Finished in {round((time.time()-start_time)/60, 1)} minutes.')
 
 
 if __name__ == "__main__":
 
     torch.multiprocessing.set_start_method("spawn")
     MAX_VISUABLE_POS = 10
-    FEATURE_SIZE = args.feature_size
     BATCH_SIZE = 256
     NUM_INTERACTION = 10000
     # NUM_INTERACTION = 30000
@@ -397,12 +397,14 @@ if __name__ == "__main__":
     # click_types = ["cascade"]
     click_types = [args.click_type]
 
-    if args.dataset == 'web10k':
-        print("Running web10k", flush=True)
-        dataset_fold = "/home/ykw5399/rldata/istella-s-letor"
-    else:
+    if args.dataset == 'istella':
         print("Running istella", flush=True)
+        dataset_fold = "/home/ykw5399/rldata/istella-s-letor"
+        FEATURE_SIZE = 220
+    else:
+        print("Running web10k", flush=True)
         dataset_fold = "/home/ykw5399/rldata/web10k"
+        FEATURE_SIZE = 136
 
     output_fold = args.output_fold
     five_fold = args.five_fold
@@ -413,6 +415,7 @@ if __name__ == "__main__":
     embedding_type = args.embedding_type
 
     print(f"state_type:{state_type}, click_type:{click_types}, model_type:{model_types}, embed:{embedding_type}", flush=True)
+    print(f'LR: {LR},  output_fold:{args.output_fold}')
     # for 5 folds
     for f in range(1, 2):
         if LOGGING == "svm":
@@ -428,6 +431,7 @@ if __name__ == "__main__":
                 else dataset_fold + "/"
             )
 
+        start_time = time.time()
         if not test_only:  # Train
             print("-------------------- Training------------------------", flush=True)
             print(
@@ -441,6 +445,7 @@ if __name__ == "__main__":
         
         test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
         test_set.pad(test_set.rank_list_size)
+        print(f'Finished reading data in {round((time.time()-start_time)/60, 1)} minutes.')
 
         processors = []
         # for all click models

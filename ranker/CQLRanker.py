@@ -56,21 +56,23 @@ class CQLRanker(AbstractRanker):
         elif state_type == "avg_rew":
             self.state_dim = feature_dim + max_visuable_size
 
-        ## soft actor-critic alpha
-        # print("Soft critic alpha", flush=True)
-        # self.log_alpha = torch.tensor([0.0], requires_grad=True)
-        # self.alpha = self.log_alpha.exp().detach()
-        # self.alpha_optimizer = optim.Adam(
-        #     params=[self.log_alpha], lr=self.learning_rate
-        # )
-        # self.target_entropy = (
-        #     -self.max_visuable_size
-        # )  # each query with `max_visuable_size` actions to choose
-
-        # self.log_alpha = torch.tensor([-5])  # fix alpha now
-        # self.log_alpha =  torch.tensor([-4]) # fix alpha now
-        self.log_alpha = torch.tensor([-6])  # fix alpha now
-        self.alpha = self.log_alpha.exp()
+        self.soft=False
+        if self.soft:
+            # soft actor-critic alpha
+            print("Soft critic alpha", flush=True)
+            self.log_alpha = torch.tensor([-6.0], requires_grad=True)
+            self.alpha = self.log_alpha.exp().detach()
+            self.alpha_optimizer = optim.Adam(
+                params=[self.log_alpha], lr=self.learning_rate
+            )
+            self.target_entropy = (
+                -self.max_visuable_size
+            )  # each query with `max_visuable_size` actions to choose
+        else:
+            # self.log_alpha = torch.tensor([-5])  # fix alpha now
+            # self.log_alpha =  torch.tensor([-4]) # fix alpha now
+            self.log_alpha = torch.tensor([-6])  # fix alpha now
+            self.alpha = self.log_alpha.exp()
 
         ## CQL params
         self.with_lagrange = False  # whether using lagrange
@@ -249,14 +251,15 @@ class CQLRanker(AbstractRanker):
         if self.embedding:
             self.embedding_optimizer.step()
 
-        # alpha_loss = -(
-        #     self.log_alpha.exp()
-        #     * (log_pis.cpu() + self.target_entropy + index).detach().cpu()
-        # ).mean()
-        # self.alpha_optimizer.zero_grad()
-        # alpha_loss.backward()
-        # self.alpha_optimizer.step()
-        # self.alpha = self.log_alpha.exp().detach()
+        if self.soft:
+            alpha_loss = -(
+                self.log_alpha.exp()
+                * (log_pis.cpu() + self.target_entropy + index).detach().cpu()
+            ).mean()
+            self.alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
+            self.alpha = self.log_alpha.exp().detach()
 
         # return actor_loss.item(), alpha_loss.item()
         return actor_loss.item()
