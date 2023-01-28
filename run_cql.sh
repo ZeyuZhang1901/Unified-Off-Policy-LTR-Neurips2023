@@ -6,29 +6,33 @@
 
 
 
-# dataset_fold="/home/ykw5399/rldata/istella-s-letor"
+dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 # feature_size=220 #fix
 # state_types=("pos_avg" "avg" "pos") 
 
 
-dataset_fold="/home/ykw5399/rldata/istella-s-letor"
-feature_size=220 #fix
-state_types=("pos_avg" "avg" "pos") 
-click_types=("cascade" "pbm")
-for state_type in "${state_types[@]}"
-do
-    for clt in "${click_types[@]}"
-    do
-    echo "-----------------------------------------------------------------------------------------------"
-    echo "------------------------------------------CQL--------------------------------------------------"
-    output_fold=out/istella/cql/$state_type
-    CUDA_VISIBLE_DEVICES=0 python runs/run_CQL.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
-    done
-done
+# dataset_fold="/home/ykw5399/rldata/istella-s-letor"
+# feature_size=220 #fix
+# state_types=("rew" "avg_rew") 
+# click_types=("cascade")
+# for state_type in "${state_types[@]}"
+# do
+#     for clt in "${click_types[@]}"
+#     do
+#     echo "-----------------------------------------------------------------------------------------------"
+#     echo "------------------------------------------CQL--------------------------------------------------"
+#     output_fold=out/istella/cql/$state_type
+#     CUDA_VISIBLE_DEVICES=1 python runs/run_CQL.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
+#     done
+# done
 
 
-
-
+state_type='rew'
+clt='cascade'
+embed='LSTM'
+output_fold=out/istella/cql/$embed$state_type
+echo $output_fold
+CUDA_VISIBLE_DEVICES=0 python runs/run_CQL.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt --embedding --embedding_type $embed
 
 
 

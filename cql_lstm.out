@@ -1,0 +1,5 @@
+out/istella/cql/LSTMrew
+-------------------- Training------------------------
+Epochs: 10000	Valid step: 50	Save step: 1000
+Read data from /home/ykw5399/rldata/istella-s-letor/tmp_data//train in ULTRA format.
+/home/ykw5399/rldata/istella-s-letor/tmp_data/settings.json

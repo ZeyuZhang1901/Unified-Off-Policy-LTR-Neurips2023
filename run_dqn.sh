@@ -22,11 +22,13 @@
 # output_fold=out/istella/dqn/$state_type
 # CUDA_VISIBLE_DEVICES=2 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type
 
+#"cascade"
+
 
 dataset_fold="/home/ykw5399/rldata/istella-s-letor"
 feature_size=220 #fix
-state_types=("pos_avg" "avg" "pos") 
-click_types=("cascade" "pbm")
+state_types=("avg" "pos") 
+click_types=("pbm")
 
 for clt in "${click_types[@]}"
 do
@@ -35,7 +37,7 @@ do
     echo "-----------------------------------------------------------------------------------------------"
     echo "------------------------------------------DQN--------------------------------------------------"
     output_fold=out/istella/dqn/$state_type
-    CUDA_VISIBLE_DEVICES=2 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
+    CUDA_VISIBLE_DEVICES=3 python runs/run_DQN.py --dataset_fold $dataset_fold --output_fold $output_fold --state_type $state_type --click_type $clt
     done
 done
 
