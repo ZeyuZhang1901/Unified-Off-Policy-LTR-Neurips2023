@@ -10,7 +10,7 @@ def loadModelFromJson(model_desc):
         click_model = UserBrowsingModel()
     elif model_desc["model_name"] == "cascade_model":
         click_model = CascadeModel()
-    elif model_desc['model_name'] == 'dependent_click_model':
+    elif model_desc["model_name"] == "dependent_click_model":
         click_model = DependentClickModel()
     click_model.eta = model_desc["eta"]
     click_model.click_prob = model_desc["click_prob"]
@@ -253,16 +253,16 @@ class DependentClickModel(ClickModel):
     def setExamProb(self, eta):
         self.eta = eta
         self.original_exam_prob = [
-            1.00,
-            0.50,
-            0.333,
-            0.25,
+            0.68,
+            0.61,
+            0.48,
+            0.34,
+            0.28,
             0.20,
-            0.167,
-            0.143,
-            0.125,
-            0.111,
-            0.1,
+            0.11,
+            0.10,
+            0.08,
+            0.06,
         ]
         self.exam_prob = [pow(x, eta) for x in self.original_exam_prob]
 
@@ -271,16 +271,17 @@ class DependentClickModel(ClickModel):
         last_click = False
         done = False
         for rank in range(len(label_list)):
-            exam, click, exam_p, click_p = self.sampleClick(
-                rank, last_click, label_list[rank]
-            )
             if done:
                 click_list.append(0.0)
                 exam_p_list.append(0.0)
-            else:
-                click_list.append(click)
-                exam_p_list.append(exam_p)
+                click_p_list.append(0.0)
+                continue
+            exam, click, exam_p, click_p = self.sampleClick(
+                rank, last_click, label_list[rank]
+            )
             click_p_list.append(click_p)
+            click_list.append(click)
+            exam_p_list.append(exam_p)
             if click > 0:
                 last_click = True
             if exam == 0:
@@ -302,11 +303,7 @@ class DependentClickModel(ClickModel):
         if not relevance_label == int(relevance_label):
             print("RELEVANCE LABEL MUST BE INTEGER!")
         relevance_label = int(relevance_label) if relevance_label > 0 else 0
-        exam_p = (
-            self.getExamProb(rank)
-            if last_click
-            else (1.0 if rank < len(self.exam_prob) else -1)
-        )
+        exam_p = self.getExamProb(rank) if last_click else 1.0
         click_p = self.click_prob[
             relevance_label if relevance_label < len(self.click_prob) else -1
         ]
@@ -370,6 +367,7 @@ def main():
         "pbm": PositionBiasedModel,
         "cascade": CascadeModel,
         "ubm": UserBrowsingModel,
+        "dcm": DependentClickModel,
     }
 
     model_name = sys.argv[1]

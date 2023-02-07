@@ -1,11 +1,10 @@
-
 import sys
 
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.IPWRanker import IPWRanker
-from ranker.input_feed import Train_Input_feed, Validation_Input_feed
+from utils.input_feed import Train_Input_feed, Validation_Input_feed
 from dataset import data_utils
 from propensityModel.propensity_estimator import RandomizedPropensityEstimator
 
@@ -21,12 +20,10 @@ import copy
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--feature_size", type=int, required=True)
-parser.add_argument("--dataset_fold", type=str, required=True)
 parser.add_argument("--output_fold", type=str, required=True)
-parser.add_argument("--data_type", type=str, required=True)  # 'mq' or 'web10k'
-parser.add_argument("--logging", type=str, required=True)  ## 'svm' or 'initial'
-parser.add_argument("--five_fold", default=True, action="store_true")  # fivefold
+parser.add_argument("--ranker_json_file", type=str, required=True)  # ranker json file
+parser.add_argument("--running_json_file", type=str, required=True)  # running json file
+parser.add_argument("--start_epoch", type=int, default=0)  # start epoch
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 args = parser.parse_args()
 
@@ -75,7 +72,6 @@ def train(
         )
         ckpt = torch.load(checkpoint_path + f"IPW(step_{start_checkpoint}).ckpt")
         ranker.model.load_state_dict(ckpt)
-
         ranker.global_step = start_checkpoint
 
     ## valid initial performance
@@ -130,6 +126,7 @@ def train(
             )
 
 
+# %%
 def validation(
     dataset,
     data_input_feed,
@@ -154,6 +151,7 @@ def validation(
     return valid_summary
 
 
+# %%
 def test(
     test_set,
     test_input_feed,
@@ -181,14 +179,12 @@ def test(
 # %%
 def job(
     feature_size,
-    model_type,
-    click_type,
-    data_type,
     batch_size,
-    lr,
+    eta,
+    min_prob,
+    click_type,
+    rel_level,
     max_visuable_size,
-    metric_type,
-    metric_topn,
     num_interaction,
     start_checkpoint,
     steps_per_checkpoint,
@@ -197,12 +193,13 @@ def job(
     train_set,
     valid_set,
     test_set,
+    ranker_json_file,
     output_fold,
     test_only,
 ):
     click_model_path = (
         whole_path
-        + f"clickModel/model_files/{click_type}_{data_type}_{model_type}.json"
+        + f"clickModel/{click_type}/{click_type}_{min_prob}_1.0_{rel_level}_{eta}.json"
     )
     with open(click_model_path) as fin:
         model_desc = json.load(fin)
@@ -210,16 +207,16 @@ def job(
 
     propensity_model_path = (
         whole_path
-        + f"propensityModel/model_files/{click_type}_{data_type}_{model_type}.json"
+        + f"propensityModel/{click_type}/{click_type}_{min_prob}_1.0_{rel_level}_{eta}.json"
     )
-    propensity_estimator = RandomizedPropensityEstimator(propensity_model_path)
+    propensity_model = RandomizedPropensityEstimator(propensity_model_path)
 
     # for r in range(1, 4):
     for r in range(1, 2):
         np.random.seed(r)
         random.seed(r)
         torch.manual_seed(r)
-        print(f"Round{r}\tclick type: {click_type}\tmodel type: {model_type}")
+        print(f"Round{r}\tclick type: {click_type}\teta: {eta}\tmin prob: {min_prob}")
 
         if test_only:
             max_visuable_size = min(test_set.rank_list_size, max_visuable_size)
@@ -228,33 +225,24 @@ def job(
                 batch_size=batch_size,
             )
             ranker = IPWRanker(
+                hyper_json_file=ranker_json_file,
                 feature_size=feature_size,
-                click_model=click_model,
-                propensity_estimator=propensity_estimator,
-                learning_rate=lr,
-                batch_size=batch_size,
                 rank_list_size=test_set.rank_list_size,
-                metric_type=metric_type,
-                metric_topn=metric_topn,
                 max_visuable_size=max_visuable_size,
+                click_model=click_model,
+                propensity_estimator=propensity_model,
             )
             test(
                 test_set=test_set,
                 test_input_feed=test_input_feed,
                 ranker=ranker,
-                performance_path="{}/fold{}/{}_{}_run{}/performance_test.txt".format(
-                    output_fold, f, click_type, model_type, r
-                ),
-                checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
-                    output_fold, f, click_type, model_type, r
-                ),
+                performance_path=f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/performance_test.txt",
+                checkpoint_path=f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/",
             )
 
         else:
             writer = SummaryWriter(
-                "{}/fold{}/{}_{}_run{}/".format(
-                    output_fold, f, click_type, model_type, r
-                )
+                f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/"
             )
             max_visuable_size = min(
                 train_set.rank_list_size, valid_set.rank_list_size, max_visuable_size
@@ -269,15 +257,12 @@ def job(
                 batch_size=batch_size,
             )
             ranker = IPWRanker(
+                hyper_json_file=ranker_json_file,
                 feature_size=feature_size,
-                click_model=click_model,
-                propensity_estimator=propensity_estimator,
-                learning_rate=lr,
-                batch_size=batch_size,
                 rank_list_size=valid_set.rank_list_size,
-                metric_type=metric_type,
-                metric_topn=metric_topn,
                 max_visuable_size=max_visuable_size,
+                click_model=click_model,
+                propensity_estimator=propensity_model,
             )
             train(
                 train_set=train_set,
@@ -290,9 +275,7 @@ def job(
                 writer=writer,
                 steps_per_checkpoint=steps_per_checkpoint,
                 steps_per_save=steps_per_save,
-                checkpoint_path="{}/fold{}/{}_{}_run{}/".format(
-                    output_fold, f, click_type, model_type, r
-                ),
+                checkpoint_path=f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/",
             )
             writer.close()
 
@@ -300,45 +283,38 @@ def job(
 # %%
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
-    MAX_VISUABLE_POS = 10
-    FEATURE_SIZE = args.feature_size
-    BATCH_SIZE = 256
-    NUM_INTERACTION = 10000
-    # NUM_INTERACTION = 30000
-    STEPS_PER_SAVE = 1000
-    STEPS_PER_CHECKPOINT = 50
-    START_CHECKPOINT = 0  # usually start from scratch
-    LR = 1e-5
-
-    DATA_TYPE = args.data_type
-    LOGGING = args.logging  ## logging policy type
-
-    metric_type = ["mrr", "ndcg"]
-    metric_topn = [3, 5, 10]
-    objective_metric = "ndcg_10"
-
-    # model_types = ["informational", "perfect", "navigational"]
-    # model_types = ["informational", "perfect"]
-    model_types = ["perfect"]
-    # click_types = ["pbm", "cascade"]
-    # click_types = ["pbm"]
-    click_types = ["dcm"]
-    # click_types = ["cascade"]
-
-    dataset_fold = args.dataset_fold
     output_fold = args.output_fold
-    five_fold = args.five_fold
-    test_only = args.test_only  # whether train or test
+    ranker_json_file = args.ranker_json_file
+    running_json_file = args.running_json_file
+    start_epoch = args.start_epoch
+    test_only = args.test_only
 
+    ## running hypers from running json file
+    with open(running_json_file) as running_json:
+        hypers = json.load(running_json)
+    feature_size = int(hypers["feature_size"])
+    max_visuable_size = int(hypers["max_visuable_size"])
+    batch_size = int(hypers["batch_size"])
+    dataset_fold = hypers["dataset_fold"]
+    logging = hypers["logging"]
+    rel_level = int(hypers["rel_level"])
+    five_fold = bool(hypers["five_fold"])
+    epochs = int(hypers["epochs"])
+    steps_per_checkpoint = int(hypers["steps_per_checkpoint"])
+    steps_per_save = int(hypers["steps_per_save"])
+
+    click_models = hypers["click_models"]  # list
+    etas = hypers["etas"]  # list
+    min_probs = hypers["min_probs"]  # list
     # for 5 folds
     for f in range(1, 2):
-        if LOGGING == "svm":
+        if logging == "svm":
             path = (
                 "{}/Fold{}/tmp_data/".format(dataset_fold, f)
                 if five_fold
                 else "{}/tmp_data/".format(dataset_fold)
             )
-        elif LOGGING == "initial":
+        elif logging == "random":
             path = (
                 "{}/Fold{}/".format(dataset_fold, f)
                 if five_fold
@@ -347,17 +323,17 @@ if __name__ == "__main__":
 
         if test_only:  # Test
             print("---------------------Test  start!------------------------")
-            test_set = data_utils.read_data(path, "test", None, 0, LOGGING)
+            test_set = data_utils.read_data(path, "test", None, 0, logging)
             train_set, valid_set = None, None
             max_candidate_num = test_set.rank_list_size
             test_set.pad(test_set.rank_list_size)
         else:  # Train
             print("---------------------Train start!------------------------")
             print(
-                f"Epochs: {NUM_INTERACTION}\tValid step: {STEPS_PER_CHECKPOINT}\tSave step: {STEPS_PER_SAVE}"
+                f"Epochs: {epochs}\tValid step: {steps_per_checkpoint}\tSave step: {steps_per_save}"
             )
-            train_set = data_utils.read_data(path, "train", None, 0, LOGGING)
-            valid_set = data_utils.read_data(path, "valid", None, 0, LOGGING)
+            train_set = data_utils.read_data(path, "train", None, 0, logging)
+            valid_set = data_utils.read_data(path, "valid", None, 0, logging)
             test_set = None
             max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
             train_set.pad(max_candidate_num)
@@ -365,36 +341,35 @@ if __name__ == "__main__":
 
         processors = []
         # for 3 click_models
-        for click_type in click_types:
-            for mode_type in model_types:
-                p = mp.Process(
-                    target=job,
-                    args=(
-                        FEATURE_SIZE,
-                        mode_type,
-                        click_type,
-                        DATA_TYPE,
-                        BATCH_SIZE,
-                        LR,
-                        MAX_VISUABLE_POS,
-                        metric_type,
-                        metric_topn,
-                        NUM_INTERACTION,
-                        START_CHECKPOINT,
-                        STEPS_PER_CHECKPOINT,
-                        STEPS_PER_SAVE,
-                        f,
-                        train_set,
-                        valid_set,
-                        test_set,
-                        output_fold,
-                        test_only,
-                    ),
-                )
-                p.start()
-                processors.append(p)
+        for click_model in click_models:
+            for eta in etas:
+                for min_prob in min_probs:
+                    p = mp.Process(
+                        target=job,
+                        args=(
+                            feature_size,
+                            batch_size,
+                            eta,
+                            min_prob,
+                            click_model,
+                            rel_level,
+                            max_visuable_size,
+                            epochs,
+                            start_epoch,
+                            steps_per_checkpoint,
+                            steps_per_save,
+                            f,
+                            train_set,
+                            valid_set,
+                            test_set,
+                            ranker_json_file,
+                            output_fold,
+                            test_only,
+                        ),
+                    )
+                    p.start()
+                    processors.append(p)
         if not five_fold:  # if not using five-fold validation
             break
     for p in processors:
         p.join()
-

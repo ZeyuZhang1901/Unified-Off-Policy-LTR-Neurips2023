@@ -1,35 +1,17 @@
+import torch
+
+
 class AbstractRanker:
-    def __init__(self, num_features):
-        self.num_features = num_features
-
-    def update(self, gradient):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "update.")
-
-    def assign_weights(self, weights):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "assign_weights.")
-
-    def get_current_weights(self):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "get_current_weights.")
-
-    def get_query_result_list(self, dataset, query):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "get_query_result_list.")
-
-    def get_all_query_result_list(self, dataset):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "get_all_query_result_list.")
-
-    def get_scores(self, features):
-        raise NotImplementedError("Derived class needs to implement "
-                                  "features.")
-
-    def restore_ranker(self):
-        raise NotImplementedError("Derived class need to implement "
-                                  "restore_ranker.")
-
-    def load_ranker(self):
-        raise NotImplementedError("Derived class need to implement "
-                                  "load_ranker.")
+    def __init__(
+        self,
+        hyper_json_file,  # str, hyper params json file for ranker
+        feature_size,
+        rank_list_size,
+        max_visuable_size,
+        click_model,
+    ):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.feature_size = feature_size
+        self.rank_list_size = rank_list_size
+        self.max_visuable_size = max_visuable_size
+        self.click_model = click_model

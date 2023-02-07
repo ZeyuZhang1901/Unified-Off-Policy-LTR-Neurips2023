@@ -3,9 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 import numpy as np
+import json
 
 from ranker.AbstractRanker import AbstractRanker
-from ranker.input_feed import create_input_feed
+from utils.input_feed import create_input_feed
 from network.IPW import DNN
 from utils import metrics
 
@@ -13,46 +14,39 @@ from utils import metrics
 class IPWRanker(AbstractRanker):
     def __init__(
         self,
+        hyper_json_file,
         feature_size,
+        rank_list_size,
+        max_visuable_size,
         click_model,
         propensity_estimator,  # propensity estimator
-        learning_rate,
-        rank_list_size,
-        metric_type,
-        metric_topn,
-        objective_metric="ndcg_10",
-        max_gradient_norm=5.0,  # Clip gradients to this norm.
-        batch_size=256,
-        max_visuable_size=10,
-        # dynamic_bias_eta_change=0.0,  # Set eta change step for dynamic bias severity in training, 0.0 means no change
-        # dynamic_bias_step_interval=1000,  # Set how many steps to change eta for dynamic bias severity in training, 0.0 means no change
-        l2_loss=0.0,  # Set strength for L2 regularization.
     ):
+        with open(hyper_json_file) as ranker_json:
+            hypers = json.load(ranker_json)
+        self.policy_lr = hypers["policy_lr"]
+        self.batch_size = hypers["batch_size"]
+        self.l2_loss = hypers["l2_loss"]
+        self.max_gradient_norm = hypers["max_gradient_norm"]
+        self.metric_type = hypers["metric_type"]
+        self.metric_topn = hypers["metric_topn"]
+        self.objective_metric = hypers["objective_metric"]
 
+        ## parameters from outside
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.batch_size = batch_size
         self.feature_size = feature_size
         self.rank_list_size = rank_list_size
         self.max_visuable_size = max_visuable_size
-        # self.dynamic_bias_eta_change = dynamic_bias_eta_change
-        # self.dynamic_bias_step_interval = dynamic_bias_step_interval
-        self.l2_loss = l2_loss
-        self.learning_rate = learning_rate
-        self.max_gradient_norm = max_gradient_norm
-
         self.click_model = click_model
+        self.propensity_estimator = propensity_estimator
+
         self.model = DNN(feature_size=self.feature_size).to(
             self.device
         )  # ranking model
-        self.propensity_estimator = propensity_estimator
+
         self.loss_func = self.softmax_loss
         # self.loss_func = self.sigmoid_loss_on_list
         # self.loss_func = self.pairwise_loss_on_list
         self.optimizer_func = torch.optim.Adam  # optimizer
-
-        self.metric_type = metric_type
-        self.metric_topn = metric_topn
-        self.objective_metric = objective_metric
 
         self.global_batch_count = 0
         self.global_step = 0
@@ -61,12 +55,6 @@ class IPWRanker(AbstractRanker):
         self.eval_summary = {}
 
     def ranking_model(self):
-        """Construct ranking model
-
-        Returns:
-            A tensor with the same shape of input_docids.
-
-        """
         output_scores = self.get_ranking_scores(input_id_list=self.docid_inputs)
         return torch.cat(output_scores, 1)
 
@@ -74,19 +62,7 @@ class IPWRanker(AbstractRanker):
         self,
         input_id_list,
     ):
-        """Compute ranking scores with the given inputs.
 
-        Args:
-            model: (BaseRankingModel) The model that is used to compute the ranking score.
-            input_id_list: (list<torch.Tensor>) A list of tensors containing document ids.
-                            Each tensor must have a shape of [None].
-            is_training: (bool) A flag indicating whether the model is running in training mode.
-
-        Returns:
-            A tensor with the same shape of input_docids.
-
-        """
-        # Build feature padding
         PAD_embed = np.zeros((1, self.feature_size), dtype=np.float32)
         letor_features = np.concatenate((self.letor_features, PAD_embed), axis=0)
         input_feature_list = []
@@ -103,22 +79,36 @@ class IPWRanker(AbstractRanker):
         self.model.train()
 
         ## Compute propensity weights for the input data
-        pw = []
-        # for l in range(self.rank_list_size):
-        #     input_feed["propensity_weights{0}".format(l)] = []
+        if self.click_model.model_name == "dependent_click_model":
+            lbd, clicks = [], []
+        else:
+            pw = []
         for i in range(len(input_feed[f"label0"])):
             click_list = [
                 input_feed[f"label{l}"][i] for l in range(self.max_visuable_size)
             ]
-            pw_list = self.propensity_estimator.getPropensityForOneList(click_list)
-            pw.append(pw_list)
-            # for l in range(self.rank_list_size):
-            #     input_feed["propensity_weights{0}".format(l)].append(pw_list[l])
+
+            if self.click_model.model_name == "dependent_click_model":
+                lbd_list = self.propensity_estimator.getLambdaForOneList(click_list)
+                lbd.append(lbd_list)
+                clicks.append(click_list)
+            else:
+                pw_list = self.propensity_estimator.getPropensityForOneList(click_list)
+                pw.append(pw_list)
 
         ## train
+        if self.click_model.model_name == "dependent_click_model":
+            train_lbd = torch.as_tensor(np.array(lbd)).to(self.device)
+            train_clicks = torch.as_tensor(np.array(clicks)).to(self.device)
+            train_pw = 1 / (
+                torch.cumprod(1 + 1e-9 - train_clicks * (1 - train_lbd), dim=1)
+                / (1 + 1e-9 - train_clicks * (1 - train_lbd))
+            )
+        else:
+            train_pw = torch.as_tensor(np.array(pw)).to(self.device)
+
         train_output = self.ranking_model()
         train_labels = self.labels
-        train_pw = torch.as_tensor(np.array(pw)).to(self.device)
 
         self.loss = self.loss_func(train_output, train_labels, train_pw)
 
@@ -137,12 +127,10 @@ class IPWRanker(AbstractRanker):
         ranking_model_params = self.model.parameters()
 
         if self.l2_loss > 0:
-            # for p in denoise_params:
-            #    self.exam_loss += self.hparams.l2_loss * tf.nn.l2_loss(p)
             for p in ranking_model_params:
                 self.loss += self.l2_loss * torch.sum(p**2) / 2
 
-        opt_ranker = self.optimizer_func(self.model.parameters(), self.learning_rate)
+        opt_ranker = self.optimizer_func(self.model.parameters(), self.policy_lr)
         opt_ranker.zero_grad()
         self.loss.backward()
 

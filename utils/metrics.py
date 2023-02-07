@@ -40,7 +40,7 @@ class RankingMetricKey(object):
 
     # Expected Reciprocal Rank
     ERR = 'err'
-    MAX_LABEL = None
+    MAX_LABEL = 2
 
     # Average Relvance Position.
     ARP = 'arp'

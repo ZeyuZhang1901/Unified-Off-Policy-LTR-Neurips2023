@@ -1,0 +1,29 @@
+{
+    "feature_size": 46,
+    "max_visuable_size": 10,
+    "batch_size": 256,
+    "dataset_fold": "/home/zeyuzhang/LearningtoRank/datasets/MSLR10K",
+    "logging": "svm",
+    "click_models": [
+        "pbm",
+        "cascade",
+        "dcm"
+    ],
+    "etas": [
+        0.5,
+        1,
+        2
+    ],
+    "min_probs": [
+        0.1,
+        0.2,
+        0.3
+    ],
+    "rel_level": 4,
+    "five_fold": "True",
+
+    
+    "epochs": 10000,
+    "steps_per_checkpoint": 200,
+    "steps_per_save": 1000
+}

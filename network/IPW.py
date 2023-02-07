@@ -4,18 +4,9 @@ import torch.nn.functional as F
 import numpy as np
 
 class DNN(nn.Module):
-    """The deep neural network model for learning to rank.
-
-    This class implements a deep neural network (DNN) based ranking model. It's essientially a multi-layer perceptron network.
-
-    """
 
     def __init__(self,feature_size):
-        """Create the network.
 
-        Args:
-            hparams_str: (String) The hyper-parameters used to build the network.
-        """
         super(DNN, self).__init__()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

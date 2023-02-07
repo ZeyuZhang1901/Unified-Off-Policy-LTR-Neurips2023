@@ -3,6 +3,8 @@ import sys
 import json
 import copy
 import random
+import torch
+
 sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
 
 from dataset import data_utils
@@ -43,6 +45,18 @@ class BasicPropensityEstimator:
             propensity_weights.append(pw)
         return propensity_weights
 
+    def getLambdaForOneList(self, click_list, use_non_clicked_data=False):
+        lambdas = []
+        for r in range(len(click_list)):
+            lamb = 0.0
+            if use_non_clicked_data or (click_list[r] > 0):
+                if r < len(self.lambda_list):
+                    lamb = self.lambda_list[r]
+                else:
+                    lamb = self.lambda_list[-1]
+            lambdas.append(lamb)
+        return lambdas
+
     def loadEstimatorFromFile(self, file_name):
         """Load a propensity estimator from a json file.
 
@@ -51,7 +65,7 @@ class BasicPropensityEstimator:
         """
         with open(file_name) as data_file:
             data = json.load(data_file)
-            self.IPW_list = data['IPW_list']
+            self.IPW_list = data["IPW_list"]
         return
 
     def outputEstimatorToFile(self, file_name):
@@ -60,10 +74,8 @@ class BasicPropensityEstimator:
         Args:
             file_name: (string) The path to the json file of the propensity estimator.
         """
-        json_dict = {
-            'IPW_list': self.IPW_list
-        }
-        with open(file_name, 'w') as fout:
+        json_dict = {"IPW_list": self.IPW_list}
+        with open(file_name, "w") as fout:
             fout.write(json.dumps(json_dict, indent=4, sort_keys=True))
         return
 
@@ -89,9 +101,11 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         with open(file_name) as data_file:
             data = json.load(data_file)
             self.click_model = None
-            if 'click_model' in data:
-                self.click_model = CM.loadModelFromJson(data['click_model'])
-            self.IPW_list = data['IPW_list']
+            if "click_model" in data:
+                self.click_model = CM.loadModelFromJson(data["click_model"])
+            self.IPW_list = data["IPW_list"]
+            if self.click_model.model_name == "dependent_click_model":
+                self.lambda_list = data["Lambda_list"]
         return
 
     def estimateParametersFromModel(self, click_model, data_set):
@@ -103,16 +117,28 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
 
         """
         self.click_model = click_model
-        click_count = [[0 for _ in range(x + 1)]
-                       for x in range(data_set.rank_list_size)]
+        click_count = [
+            [0 for _ in range(x + 1)] for x in range(data_set.rank_list_size)
+        ]
         label_lists = copy.deepcopy(data_set.labels)
         # Conduct randomized click experiments
         session_num = 0
+        if self.click_model.model_name == "dependent_click_model":
+            last_click_count = torch.zeros(data_set.rank_list_size)
+            position_click_count = torch.zeros(data_set.rank_list_size)
         while session_num < 10e6:
             index = random.randint(0, len(label_lists) - 1)
             random.shuffle(label_lists[index])
             click_list, _, _ = self.click_model.sampleClicksForOneList(
-                label_lists[index])
+                label_lists[index]
+            )
+            ## if dcm, estimate lambdas
+            if self.click_model.model_name == "dependent_click_model":
+                position_click_count[: len(click_list)] += torch.tensor(click_list)
+                if sum(click_list) != 0:
+                    index = [i for i, e in enumerate(click_list) if e != 0][-1]
+                    last_click_count[index] += 1
+
             # Count how many clicks happened on the i position for a list with
             # that lengths.
             for i in range(len(click_list)):
@@ -120,6 +146,10 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             session_num += 1
         # Count how many clicks happened on the 1st position for a list with
         # different lengths.
+        if self.click_model.model_name == "dependent_click_model":
+            self.lambda_list = (
+                1 - last_click_count / (position_click_count + 1e-6)
+            ).tolist()
         first_click_count = [0 for _ in range(data_set.rank_list_size)]
         agg_click_count = [0 for _ in range(data_set.rank_list_size)]
         for x in range(len(click_count)):
@@ -129,8 +159,13 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
 
         # Estimate IPW for each position (assuming that position 0 has weight
         # 1)
-        self.IPW_list = [min(first_click_count[x] / (agg_click_count[x] + 10e-6),
-                             first_click_count[x]) for x in range(len(click_count))]
+        self.IPW_list = [
+            min(
+                first_click_count[x] / (agg_click_count[x] + 10e-6),
+                first_click_count[x],
+            )
+            for x in range(len(click_count))
+        ]
         return
 
     def outputEstimatorToFile(self, file_name):
@@ -140,16 +175,21 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             file_name: (string) The path to the json file of the propensity estimator.
         """
         json_dict = {
-            'click_model': self.click_model.getModelJson(),
-            'IPW_list': self.IPW_list
+            "click_model": self.click_model.getModelJson(),
+            "IPW_list": self.IPW_list,
         }
-        with open(file_name, 'w') as fout:
+        if self.click_model.model_name == "dependent_click_model":
+            json_dict = {
+                "click_model": self.click_model.getModelJson(),
+                "IPW_list": self.IPW_list,
+                "Lambda_list": self.lambda_list,
+            }
+        with open(file_name, "w") as fout:
             fout.write(json.dumps(json_dict, indent=4, sort_keys=True))
         return
 
 
 class OraclePropensityEstimator(BasicPropensityEstimator):
-
     def __init__(self, click_model):
         self.click_model = click_model
 
@@ -161,12 +201,13 @@ class OraclePropensityEstimator(BasicPropensityEstimator):
         """
         with open(file_name) as data_file:
             data = json.load(data_file)
-            self.click_model = CM.loadModelFromJson(data['click_model'])
+            self.click_model = CM.loadModelFromJson(data["click_model"])
         return
 
     def getPropensityForOneList(self, click_list, use_non_clicked_data=False):
         return self.click_model.estimatePropensityWeightsForOneList(
-            click_list, use_non_clicked_data)
+            click_list, use_non_clicked_data
+        )
 
     def outputEstimatorToFile(self, file_name):
         """Export a propensity estimator to a json file.
@@ -175,9 +216,9 @@ class OraclePropensityEstimator(BasicPropensityEstimator):
             file_name: (string) The path to the json file of the propensity estimator.
         """
         json_dict = {
-            'click_model': self.click_model.getModelJson(),
+            "click_model": self.click_model.getModelJson(),
         }
-        with open(file_name, 'w') as fout:
+        with open(file_name, "w") as fout:
             fout.write(json.dumps(json_dict, indent=4, sort_keys=True))
         return
 
@@ -188,7 +229,7 @@ def main():
     output_path = sys.argv[3]
 
     print("Load data from " + data_dir)
-    train_set = data_utils.read_data(data_dir, 'train',None)
+    train_set = data_utils.read_data(data_dir, "train", None)
     click_model = None
     with open(click_model_json_file) as fin:
         model_desc = json.load(fin)
