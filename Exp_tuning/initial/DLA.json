@@ -1,0 +1,14 @@
+{
+    "batch_size": 256,
+    "policy_lr": 1e-5,
+    "propensity_lr": 1e-5,
+    "metric_type": [
+        "err",
+        "ndcg"
+    ],
+    "metric_topn": [3,5,10],
+    "objective_metric": "ndcg_10",
+    "max_gradient_norm": 5.0,
+    "max_propensity_weight": -1,
+    "l2_loss": 0.0
+}

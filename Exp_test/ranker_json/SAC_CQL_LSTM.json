@@ -3,7 +3,8 @@
     "critic_lr": 1e-4,
     "alpha_lr": 1e-4,
     "cql_alpha_lr": 1e-4,
-    "embed_lr": 1e-6,
+    "embed_lr": 1e-4,
+    "lr_decay": "True",
 
     "batch_size": 256,
     "max_gradient_norm": 5.0,
@@ -17,7 +18,7 @@
     "metric_topn": [3,5,10],
     "objective_metric": "ndcg_10",
 
-    "state_type": "avg",
+    "state_type": "avg_rew",
     "embed_type": "LSTM",
     "num_layer": 1,
 

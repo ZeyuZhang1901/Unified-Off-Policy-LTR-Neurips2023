@@ -1,6 +1,8 @@
 {
     "policy_lr": 1e-5,
     "embed_lr": 1e-7,
+    "lr_decay": "True",
+    
     "batch_size": 256,
     "max_gradient_norm": 5.0,
     "target_update_steps": 50,

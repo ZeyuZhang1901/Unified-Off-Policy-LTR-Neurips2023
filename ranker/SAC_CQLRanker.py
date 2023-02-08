@@ -30,6 +30,7 @@ class SAC_CQLRanker(AbstractRanker):
         self.alpha_lr = hypers["alpha_lr"]
         self.cql_alpha_lr = hypers["cql_alpha_lr"]
         self.embed_lr = hypers["embed_lr"]
+        self.lr_decay = bool(hypers["lr_decay"])
         # state type and embedding
         self.state_type = hypers["state_type"]
         self.embed_type = hypers["embed_type"]  # if not using, set None
@@ -82,27 +83,29 @@ class SAC_CQLRanker(AbstractRanker):
         self.actor = Actor(action_dim=self.feature_size, state_dim=self.state_dim).to(
             self.device
         )
-        if self.embed_type != "None":
-            self.actor_optimizer = optim.Adam(
-                [
-                    {"params": self.actor.parameters()},
-                    {"params": self.embed_model.parameters(), "lr": self.embed_lr},
-                ],
-                lr=self.actor_lr,
+        # if self.embed_type != "None":
+        #     self.actor_optimizer = optim.Adam(
+        #         [
+        #             {"params": self.actor.parameters()},
+        #             {"params": self.embed_model.parameters(), "lr": self.embed_lr},
+        #         ],
+        #         lr=self.actor_lr,
+        #     )
+        # else:
+        #     self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
+        if self.lr_decay:
+            self.actor_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                self.actor_optimizer, gamma=0.999
             )
-            # self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
-        else:
-            self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
-        self.actor_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-            self.actor_optimizer, gamma=0.999
-        )
         # alpha
         if self.auto_actor_alpha:  # learn actor alpha automatically
             self.log_alpha = torch.tensor([self.initial_log_alpha], requires_grad=True)
             self.alpha_optimizer = optim.Adam(params=[self.log_alpha], lr=self.alpha_lr)
-            self.alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-                self.alpha_optimizer, gamma=0.999
-            )
+            if self.lr_decay:
+                self.alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.alpha_optimizer, gamma=0.999
+                )
             self.target_entropy = (
                 -self.max_visuable_size
             )  # each query with `max_visuable_size` actions to choose
@@ -134,17 +137,19 @@ class SAC_CQLRanker(AbstractRanker):
                 list(self.critic1.parameters()) + list(self.critic2.parameters()),
                 lr=self.critic_lr,
             )
-        self.critic_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-            self.critic_optimizer, gamma=0.999
-        )
+        if self.lr_decay:
+            self.critic_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                self.critic_optimizer, gamma=0.999
+            )
         # cql setting
         self.cql_log_alpha = torch.zeros(1, requires_grad=True)
         self.cql_alpha_optimizer = optim.Adam(
             params=[self.cql_log_alpha], lr=self.cql_alpha_lr
         )
-        self.cql_alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-            self.cql_alpha_optimizer, gamma=0.999
-        )
+        if self.lr_decay:
+            self.cql_alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                self.cql_alpha_optimizer, gamma=0.999
+            )
 
         ## record and count
         self.global_step = 0
@@ -461,12 +466,14 @@ class SAC_CQLRanker(AbstractRanker):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        self.actor_lr_optimizer.step()
+        if self.lr_decay:
+            self.actor_lr_optimizer.step()
         if self.auto_actor_alpha:
             self.alpha_optimizer.zero_grad()
             alpha_loss.backward()
             self.alpha_optimizer.step()
-            self.alpha_lr_optimizer.step()
+            if self.lr_decay:
+                self.alpha_lr_optimizer.step()
 
         ## actor norm
         actor_norm = 0
@@ -556,6 +563,8 @@ class SAC_CQLRanker(AbstractRanker):
                 cql_alpha_loss = (-cql1_scaled_loss - cql2_scaled_loss) * 0.5
                 cql_alpha_loss.backward(retain_graph=True)
                 self.cql_alpha_optimizer.step()
+                if self.lr_decay:
+                    self.cql_alpha_lr_optimizer.step()
 
                 total_c1_loss = critic1_loss + cql1_scaled_loss
                 total_c2_loss = critic2_loss + cql2_scaled_loss
@@ -577,7 +586,8 @@ class SAC_CQLRanker(AbstractRanker):
             self.max_gradient_norm,
         )
         self.critic_optimizer.step()
-        self.critic_lr_optimizer.step()
+        if self.lr_decay:
+            self.critic_lr_optimizer.step()
 
         ## critic norm
         critic_norm = 0.0
