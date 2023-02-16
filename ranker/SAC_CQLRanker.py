@@ -30,25 +30,28 @@ class SAC_CQLRanker(AbstractRanker):
         self.alpha_lr = hypers["alpha_lr"]
         self.cql_alpha_lr = hypers["cql_alpha_lr"]
         self.embed_lr = hypers["embed_lr"]
-        self.lr_decay = bool(hypers["lr_decay"])
+        self.lr_decay_type = hypers["lr_decay_type"]  # if no decay, set "None"
         # state type and embedding
         self.state_type = hypers["state_type"]
-        self.embed_type = hypers["embed_type"]  # if not using, set None
+        self.embed_type = hypers["embed_type"]  # if not using, set "None"
         self.num_layer = hypers["num_layer"]
         # actor
-        self.auto_actor_alpha = bool(hypers["auto_actor_alpha"])
+        self.auto_actor_alpha = eval(hypers["auto_actor_alpha"])
         self.initial_log_alpha = hypers["initial_log_alpha"]
         # critic and cql
-        self.using_cql = bool(hypers["using_cql"])
-        self.with_lagrange = bool(hypers["with_lagrange"])
+        self.using_cql = eval(hypers["using_cql"])
+        self.with_lagrange = eval(hypers["with_lagrange"])
         self.target_action_gap = hypers["target_action_gap"]
-        self.initial_cql_alpha = hypers["initial_cql_alpha"]
+        self.initial_log_cql_alpha = hypers["initial_log_cql_alpha"]
         # others
+        self.alter_update_step = hypers[
+            "alter_update_step"
+        ]  # if update embed and AC simutaneously, set -1
         self.batch_size = hypers["batch_size"]
         self.discount = hypers["discount"]
         self.l2_loss = hypers["l2_loss"]
         self.max_gradient_norm = hypers["max_gradient_norm"]
-        self.target_update_steps = hypers["target_update_steps"]
+        self.soft_update = hypers["soft_update"]
         self.metric_type = hypers["metric_type"]
         self.metric_topn = hypers["metric_topn"]
         self.objective_metric = hypers["objective_metric"]
@@ -74,37 +77,58 @@ class SAC_CQLRanker(AbstractRanker):
             self.embed_model = nn.RNN(
                 self.state_dim, self.state_dim, num_layers=self.num_layer
             ).to(self.device)
+            self.embed_optimizer = optim.Adam(
+                self.embed_model.parameters(), lr=self.embed_lr
+            )
+            if self.lr_decay_type == "exp":
+                self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.embed_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.embed_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.embed_optimizer, step_size=5000, gamma=0.1
+                )
         elif self.embed_type == "LSTM":
             self.embed_model = nn.LSTM(
                 self.state_dim, self.state_dim, num_layers=self.num_layer
             ).to(self.device)
+            self.embed_optimizer = optim.Adam(
+                self.embed_model.parameters(), lr=self.embed_lr
+            )
+            if self.lr_decay_type == "exp":
+                self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.embed_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.embed_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.embed_optimizer, step_size=5000, gamma=0.1
+                )
 
         ## Actor net
         self.actor = Actor(action_dim=self.feature_size, state_dim=self.state_dim).to(
             self.device
         )
-        # if self.embed_type != "None":
-        #     self.actor_optimizer = optim.Adam(
-        #         [
-        #             {"params": self.actor.parameters()},
-        #             {"params": self.embed_model.parameters(), "lr": self.embed_lr},
-        #         ],
-        #         lr=self.actor_lr,
-        #     )
-        # else:
-        #     self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
-        if self.lr_decay:
+
+        if self.lr_decay_type == "step":
+            self.actor_lr_optimizer = optim.lr_scheduler.StepLR(
+                self.actor_optimizer, step_size=5000, gamma=0.1
+            )
+        elif self.lr_decay_type == "exp":
             self.actor_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-                self.actor_optimizer, gamma=0.999
+                self.actor_optimizer, gamma=0.9993
             )
         # alpha
         if self.auto_actor_alpha:  # learn actor alpha automatically
             self.log_alpha = torch.tensor([self.initial_log_alpha], requires_grad=True)
             self.alpha_optimizer = optim.Adam(params=[self.log_alpha], lr=self.alpha_lr)
-            if self.lr_decay:
+            if self.lr_decay_type == "exp":
                 self.alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-                    self.alpha_optimizer, gamma=0.999
+                    self.alpha_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.alpha_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.alpha_optimizer, step_size=5000, gamma=0.1
                 )
             self.target_entropy = (
                 -self.max_visuable_size
@@ -123,35 +147,39 @@ class SAC_CQLRanker(AbstractRanker):
         assert self.critic1.parameters() != self.critic2.parameters()
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
         self.critic2_target = copy.deepcopy(self.critic2).to(self.device)
-        if self.embed_type != "None":
-            self.critic_optimizer = optim.Adam(
-                [
-                    {"params": self.critic1.parameters()},
-                    {"params": self.critic2.parameters()},
-                    {"params": self.embed_model.parameters(), "lr": self.embed_lr},
-                ],
-                lr=self.critic_lr,
+        self.critic_optimizer = optim.Adam(
+            list(self.critic1.parameters()) + list(self.critic2.parameters()),
+            lr=self.critic_lr,
+        )
+        if self.lr_decay_type == "step":
+            self.critic_lr_optimizer = optim.lr_scheduler.StepLR(
+                self.critic_optimizer, step_size=5000, gamma=0.1
             )
-        else:
-            self.critic_optimizer = optim.Adam(
-                list(self.critic1.parameters()) + list(self.critic2.parameters()),
-                lr=self.critic_lr,
-            )
-        if self.lr_decay:
+        elif self.lr_decay_type == "exp":
             self.critic_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-                self.critic_optimizer, gamma=0.999
+                self.critic_optimizer, gamma=0.9993
             )
         # cql setting
-        self.cql_log_alpha = torch.zeros(1, requires_grad=True)
-        self.cql_alpha_optimizer = optim.Adam(
-            params=[self.cql_log_alpha], lr=self.cql_alpha_lr
-        )
-        if self.lr_decay:
-            self.cql_alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
-                self.cql_alpha_optimizer, gamma=0.999
+        if self.using_cql:
+            self.cql_log_alpha = torch.tensor(
+                [self.initial_log_cql_alpha], requires_grad=True
             )
+            self.cql_alpha_optimizer = optim.Adam(
+                params=[self.cql_log_alpha], lr=self.cql_alpha_lr
+            )
+            if self.lr_decay_type == "step":
+                self.cql_alpha_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.cql_alpha_optimizer, step_size=5000, gamma=0.1
+                )
+            elif self.lr_decay_type == "exp":
+                self.cql_alpha_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.cql_alpha_optimizer, gamma=0.9993
+                )
 
         ## record and count
+        if self.alter_update_step > 0:
+            self.update_flag = 0  # 0: update ac, 1: update embed
+            self.update_count = 0
         self.global_step = 0
         self.loss_summary = {}
         self.norm_summary = {}
@@ -323,6 +351,7 @@ class SAC_CQLRanker(AbstractRanker):
             local_batch_size, self.max_visuable_size, dtype=torch.float32
         )
         total_norm = 0.0
+        total_actor_norm, total_critic_norm, total_embed_norm = 0, 0, 0
         for i in range(self.max_visuable_size):
             ## update actor
             actor_loss, alpha_loss, actor_norm = self.update_actor(
@@ -384,12 +413,10 @@ class SAC_CQLRanker(AbstractRanker):
             masks[:, i] = 0.0
 
             ## add norm
+            total_actor_norm += actor_norm
+            total_critic_norm += critic_norm
+            total_embed_norm += embed_norm
             total_norm += actor_norm + critic_norm + embed_norm
-
-        ## Update target network
-        if self.global_step % self.target_update_steps == 0:
-            self.critic1_target.load_state_dict(self.critic1.state_dict())
-            self.critic2_target.load_state_dict(self.critic2.state_dict())
 
         ## Loss Summary
         self.loss_summary["l_actor"] = total_actor_loss / self.max_visuable_size
@@ -400,6 +427,9 @@ class SAC_CQLRanker(AbstractRanker):
         self.loss_summary["l_cql2"] = total_cql2_loss / self.max_visuable_size
         self.loss_summary["l_cql_alpha"] = total_cql_alpha_loss / self.max_visuable_size
         ## Norm Summary
+        self.norm_summary["Actor Norm"] = total_actor_norm / self.max_visuable_size
+        self.norm_summary["Critic Norm"] = total_critic_norm / self.max_visuable_size
+        self.norm_summary["Embed Norm"] = total_embed_norm / self.max_visuable_size
         self.norm_summary["Gradient Norm"] = total_norm / self.max_visuable_size
         ## Q Summary
         self.q_summary["Critic_Q1"] = total_q1_values / self.max_visuable_size
@@ -407,9 +437,15 @@ class SAC_CQLRanker(AbstractRanker):
         self.q_summary["Target_Q"] = total_q_target_values / self.max_visuable_size
 
         print(
-            "Step %d\t%s\t%s"
+            "Step %d\t%s\t%s\t%s"
             % (
                 self.global_step,
+                "\t".join(
+                    [
+                        "%s:%.3f" % (key, value)
+                        for key, value in self.q_summary.items()
+                    ]
+                ),
                 "\t".join(
                     [
                         "%s:%.3f" % (key, value)
@@ -417,11 +453,22 @@ class SAC_CQLRanker(AbstractRanker):
                     ]
                 ),
                 "\t".join(
-                    ["%s:%.3f" % (key, value) for key, value in self.q_summary.items()]
+                    ["%s:%.3f" % (key, value) for key, value in self.norm_summary.items()]
                 ),
             )
         )
+
         self.global_step += 1
+        if self.alter_update_step > 0:
+            self.update_count += 1
+            if self.update_count % self.alter_update_step == 0:
+                self.update_count = 0
+                self.update_flag = 1 - self.update_flag
+                if self.update_flag:
+                    print(f"Step {self.global_step}, switch to update embedding model!")
+                else:
+                    print(f"Step {self.global_step}, switch to update actor and critirs!")
+
         return self.loss_summary, self.norm_summary, self.q_summary
 
     def update_actor(
@@ -462,18 +509,53 @@ class SAC_CQLRanker(AbstractRanker):
                 * (log_action_pi.cpu() + self.target_entropy + index).detach().cpu()
             ).mean()
 
-        ## update actor and actor alpha
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
-        if self.lr_decay:
-            self.actor_lr_optimizer.step()
-        if self.auto_actor_alpha:
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-            if self.lr_decay:
-                self.alpha_lr_optimizer.step()
+        ## updates networks
+        if self.alter_update_step > 0:
+            if self.update_flag:  # update embed
+                self.embed_optimizer.zero_grad()
+                actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.embed_model.parameters(), self.max_gradient_norm
+                )
+                self.embed_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.embed_lr_optimizer.step()
+            else:  # update ac
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.actor.parameters(), self.max_gradient_norm
+                )
+                self.actor_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.actor_lr_optimizer.step()
+                if self.auto_actor_alpha:
+                    self.alpha_optimizer.zero_grad()
+                    alpha_loss.backward()
+                    self.alpha_optimizer.step()
+                    if self.lr_decay_type != "None":
+                        self.alpha_lr_optimizer.step()
+        else:  # update actor, embed and actor alpha
+            self.actor_optimizer.zero_grad()
+            self.embed_optimizer.zero_grad()
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                self.embed_model.parameters(), self.max_gradient_norm
+            )
+            torch.nn.utils.clip_grad_norm_(
+                self.actor.parameters(), self.max_gradient_norm
+            )
+            self.actor_optimizer.step()
+            self.embed_optimizer.step()
+            if self.lr_decay_type != "None":
+                self.actor_lr_optimizer.step()
+                self.embed_lr_optimizer.step()
+            if self.auto_actor_alpha:
+                self.alpha_optimizer.zero_grad()
+                alpha_loss.backward()
+                self.alpha_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.alpha_lr_optimizer.step()
 
         ## actor norm
         actor_norm = 0
@@ -558,36 +640,95 @@ class SAC_CQLRanker(AbstractRanker):
                     cql2_scaled_loss - self.target_action_gap
                 )
 
-                # update cql alpha
-                self.cql_alpha_optimizer.zero_grad()
                 cql_alpha_loss = (-cql1_scaled_loss - cql2_scaled_loss) * 0.5
-                cql_alpha_loss.backward(retain_graph=True)
-                self.cql_alpha_optimizer.step()
-                if self.lr_decay:
-                    self.cql_alpha_lr_optimizer.step()
 
                 total_c1_loss = critic1_loss + cql1_scaled_loss
                 total_c2_loss = critic2_loss + cql2_scaled_loss
             else:
-                cql_alpha = torch.FloatTensor([self.initial_cql_alpha])
+                cql_log_alpha = torch.FloatTensor([self.initial_log_cql_alpha]).to(
+                    self.device
+                )
+                cql_alpha = torch.exp(cql_log_alpha)
                 total_c1_loss = critic1_loss + cql_alpha * cql1_scaled_loss
                 total_c2_loss = critic2_loss + cql_alpha * cql2_scaled_loss
         else:
+            cql1_scaled_loss = torch.FloatTensor([0.0])
+            cql2_scaled_loss = torch.FloatTensor([0.0])
+            cql_alpha_loss = torch.FloatTensor([0.0])
             total_c1_loss = critic1_loss
             total_c2_loss = critic2_loss
 
         total_loss = total_c1_loss + total_c2_loss
 
         ## update critics
-        self.critic_optimizer.zero_grad()
-        total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            list(self.critic1.parameters()) + list(self.critic2.parameters()),
-            self.max_gradient_norm,
-        )
-        self.critic_optimizer.step()
-        if self.lr_decay:
-            self.critic_lr_optimizer.step()
+        if self.alter_update_step > 0:
+            if self.update_flag:  # update embed
+                self.embed_optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.embed_model.parameters(), self.max_gradient_norm
+                )
+                self.embed_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.embed_lr_optimizer.step()
+            else:
+                if self.using_cql and self.with_lagrange:
+                    self.cql_alpha_optimizer.zero_grad()
+                    cql_alpha_loss.backward(retain_graph=True)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.cql_log_alpha,
+                        self.max_gradient_norm,
+                    )
+                    self.cql_alpha_optimizer.step()
+                    if self.lr_decay_type != "None":
+                        self.cql_alpha_lr_optimizer.step()
+                self.critic_optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    list(self.critic1.parameters()) + list(self.critic2.parameters()),
+                    self.max_gradient_norm,
+                )
+                self.critic_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.critic_lr_optimizer.step()
+        else:  # update critic and embed together
+            if self.using_cql and self.with_lagrange:
+                self.cql_alpha_optimizer.zero_grad()
+                cql_alpha_loss.backward(retain_graph=True)
+                self.cql_alpha_optimizer.step()
+                if self.lr_decay_type != "None":
+                    self.cql_alpha_lr_optimizer.step()
+            self.critic_optimizer.zero_grad()
+            self.embed_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                list(self.critic1.parameters()) + list(self.critic2.parameters()),
+                self.max_gradient_norm,
+            )
+            torch.nn.utils.clip_grad_norm_(
+                self.embed_model.parameters(), self.max_gradient_norm
+            )
+            self.critic_optimizer.step()
+            self.embed_optimizer.step()
+            if self.lr_decay_type != "None":
+                self.critic_lr_optimizer.step()
+                self.embed_lr_optimizer.step()
+
+        ## soft update target
+        for target_param, local_param in zip(
+            self.critic1_target.parameters(), self.critic1.parameters()
+        ):
+            target_param.data.copy_(
+                self.soft_update * local_param.data
+                + (1.0 - self.soft_update) * target_param.data
+            )
+        for target_param, local_param in zip(
+            self.critic2_target.parameters(), self.critic2.parameters()
+        ):
+            target_param.data.copy_(
+                self.soft_update * local_param.data
+                + (1.0 - self.soft_update) * target_param.data
+            )
 
         ## critic norm
         critic_norm = 0.0

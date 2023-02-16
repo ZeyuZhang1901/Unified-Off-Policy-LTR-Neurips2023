@@ -298,10 +298,10 @@ if __name__ == "__main__":
     dataset_fold = hypers["dataset_fold"]
     logging = hypers["logging"]
     rel_level = int(hypers["rel_level"])
-    five_fold = bool(hypers["five_fold"])
+    five_fold = eval(hypers["five_fold"])
     epochs = int(hypers["epochs"])
     steps_per_checkpoint = int(hypers["steps_per_checkpoint"])
-    steps_per_save  =int(hypers["steps_per_save"])
+    steps_per_save = int(hypers["steps_per_save"])
 
     click_models = hypers["click_models"]  # list
     etas = hypers["etas"]  # list

@@ -13,9 +13,9 @@
             "justMyCode": true,
             "args": [
                 "--output_fold",
-                "/home/zeyuzhang/LearningtoRank/codebase/myLTR/Exp_test/results/IPW",
+                "/home/zeyuzhang/LearningtoRank/codebase/myLTR/Exp_test/results/sac_cql_lstm5",
                 "--ranker_json_file",
-                "/home/zeyuzhang/LearningtoRank/codebase/myLTR/Exp_test/ranker_json/IPW.json",
+                "/home/zeyuzhang/LearningtoRank/codebase/myLTR/Exp_test/ranker_json/SAC_CQL_LSTM.json",
                 "--running_json_file",
                 "/home/zeyuzhang/LearningtoRank/codebase/myLTR/Exp_test/run_json/run_mq.json",
                 "--start_epoch",

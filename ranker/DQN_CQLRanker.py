@@ -26,6 +26,7 @@ class DQN_CQLRanker(AbstractRanker):
         # learning rates
         self.policy_lr = hypers["policy_lr"]
         self.embed_lr = hypers["embed_lr"]
+        self.lr_decay = eval(hypers["lr_decay"])
         # state type and embedding
         self.state_type = hypers["state_type"]
         self.embed_type = hypers["embed_type"]  # if not using, set None
@@ -39,6 +40,7 @@ class DQN_CQLRanker(AbstractRanker):
         self.metric_type = hypers["metric_type"]
         self.metric_topn = hypers["metric_topn"]
         self.objective_metric = hypers["objective_metric"]
+        self.cql_alpha = float(hypers["cql_alpha"])
 
         ## parameters from outside
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -84,7 +86,10 @@ class DQN_CQLRanker(AbstractRanker):
             )
         else:
             self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.policy_lr)
-        self.lr_optimizer = optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.999)
+        if self.lr_decay:
+            self.lr_optimizer = optim.lr_scheduler.StepLR(
+                self.optimizer, step_size=500, gamma=0.1
+            )
 
         ## record and count
         self.global_step = 0
@@ -296,7 +301,7 @@ class DQN_CQLRanker(AbstractRanker):
             ## loss
             cql_loss = torch.logsumexp(q_values, dim=1).mean() - q_values.mean()
             mse_loss = F.mse_loss(q_chosen, q_targets)
-            total_loss = cql_loss + 0.5 * mse_loss
+            total_loss = self.cql_alpha * cql_loss + mse_loss
 
             ## update
             self.optimizer.zero_grad()
@@ -505,7 +510,7 @@ class DQN_CQLRanker(AbstractRanker):
             index = q_values.max(dim=1)[1].flatten()
 
             docid_list.append(  # list of [1 * batch_size] tensors
-                torch.gather(self.docid_inputs, dim=0, index=index.reshape(1, -1))
+                torch.gather(self.docid_inputs, dim=0, index=index.reshape(1, -1).cpu())
             )
             input_feature_list.append(  # batch_size * feature_dim
                 torch.from_numpy(

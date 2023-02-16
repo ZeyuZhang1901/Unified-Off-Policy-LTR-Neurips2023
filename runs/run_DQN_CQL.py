@@ -66,6 +66,17 @@ def train(
             start_checkpoint % steps_per_save == 0
         ), "Invalid start checkpoint! Must be an integer multiple of `steps_per_save`"
 
+        print(f"Get best performance from previous training results.")
+        metric_tmp = {}
+        with open(checkpoint_path + "performance_test.txt") as fin:
+            lines = fin.readlines()
+            for line in lines:
+                line = line.strip().split(":")
+                metric_tmp[line[0]] = float(line[1].strip())
+
+        best_perf = metric_tmp[ranker.objective_metric]
+        print(f"current best performance {ranker.objective_metric}:{best_perf}")
+
         print(
             f"Reload model parameters after {start_checkpoint} epochs from {checkpoint_path}"
         )
@@ -317,10 +328,10 @@ if __name__ == "__main__":
     dataset_fold = hypers["dataset_fold"]
     logging = hypers["logging"]
     rel_level = int(hypers["rel_level"])
-    five_fold = bool(hypers["five_fold"])
+    five_fold = eval(hypers["five_fold"])
     epochs = int(hypers["epochs"])
     steps_per_checkpoint = int(hypers["steps_per_checkpoint"])
-    steps_per_save  =int(hypers["steps_per_save"])
+    steps_per_save = int(hypers["steps_per_save"])
 
     click_models = hypers["click_models"]  # list
     etas = hypers["etas"]  # list
