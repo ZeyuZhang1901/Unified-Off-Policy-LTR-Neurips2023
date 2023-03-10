@@ -35,18 +35,20 @@ class SAC_CQLRanker(AbstractRanker):
         self.state_type = hypers["state_type"]
         self.embed_type = hypers["embed_type"]  # if not using, set "None"
         self.num_layer = hypers["num_layer"]
+        self.update_embed = eval(hypers["update_embed"])
         # actor
         self.auto_actor_alpha = eval(hypers["auto_actor_alpha"])
         self.initial_log_alpha = hypers["initial_log_alpha"]
+        self.actor_node_list = hypers["actor_structure"]
         # critic and cql
+        self.critic_node_list = hypers["critic_structure"]
         self.using_cql = eval(hypers["using_cql"])
         self.with_lagrange = eval(hypers["with_lagrange"])
         self.target_action_gap = hypers["target_action_gap"]
         self.initial_log_cql_alpha = hypers["initial_log_cql_alpha"]
         # others
-        self.alter_update_step = hypers[
-            "alter_update_step"
-        ]  # if update embed and AC simutaneously, set -1
+        self.ac_update_step = hypers["ac_update_step"]  # if 0, update together.
+        self.embed_update_step = hypers["embed_update_step"]  # if 0, update together.
         self.batch_size = hypers["batch_size"]
         self.discount = hypers["discount"]
         self.l2_loss = hypers["l2_loss"]
@@ -66,12 +68,11 @@ class SAC_CQLRanker(AbstractRanker):
         ## state setting and embedding
         if self.state_type == "avg":
             self.state_dim = self.feature_size
-        elif self.state_type == "avg_pos":
-            self.state_dim = 2 * self.feature_size
+        # elif self.state_type == "avg_pos":
+        #     self.state_dim = 2 * self.feature_size
         elif self.state_type == "avg_rew":
             self.state_dim = self.feature_size + max_visuable_size
-        elif self.state_type == "avg_pos_rew":
-            self.state_dim = 2 * self.feature_size + max_visuable_size
+
         # state embedding model
         if self.embed_type == "RNN":
             self.embed_model = nn.RNN(
@@ -105,11 +106,12 @@ class SAC_CQLRanker(AbstractRanker):
                 )
 
         ## Actor net
-        self.actor = Actor(action_dim=self.feature_size, state_dim=self.state_dim).to(
-            self.device
-        )
+        self.actor = Actor(
+            action_dim=self.feature_size,
+            state_dim=self.state_dim + self.feature_size,  # add dimension for action
+            num_node_list=self.actor_node_list,
+        ).to(self.device)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
-
         if self.lr_decay_type == "step":
             self.actor_lr_optimizer = optim.lr_scheduler.StepLR(
                 self.actor_optimizer, step_size=5000, gamma=0.1
@@ -118,6 +120,7 @@ class SAC_CQLRanker(AbstractRanker):
             self.actor_lr_optimizer = optim.lr_scheduler.ExponentialLR(
                 self.actor_optimizer, gamma=0.9993
             )
+
         # alpha
         if self.auto_actor_alpha:  # learn actor alpha automatically
             self.log_alpha = torch.tensor([self.initial_log_alpha], requires_grad=True)
@@ -139,10 +142,14 @@ class SAC_CQLRanker(AbstractRanker):
 
         ## Critic net
         self.critic1 = Critic(
-            action_dim=self.feature_size, state_dim=self.state_dim
+            action_dim=self.feature_size,
+            state_dim=self.state_dim + self.feature_size,  # add dimension for action
+            num_node_list=self.critic_node_list,
         ).to(self.device)
         self.critic2 = Critic(
-            action_dim=self.feature_size, state_dim=self.state_dim
+            action_dim=self.feature_size,
+            state_dim=self.state_dim + self.feature_size,  # add dimension for action
+            num_node_list=self.critic_node_list,
         ).to(self.device)
         assert self.critic1.parameters() != self.critic2.parameters()
         self.critic1_target = copy.deepcopy(self.critic1).to(self.device)
@@ -159,7 +166,8 @@ class SAC_CQLRanker(AbstractRanker):
             self.critic_lr_optimizer = optim.lr_scheduler.ExponentialLR(
                 self.critic_optimizer, gamma=0.9993
             )
-        # cql setting
+
+        # cql 
         if self.using_cql:
             self.cql_log_alpha = torch.tensor(
                 [self.initial_log_cql_alpha], requires_grad=True
@@ -177,7 +185,7 @@ class SAC_CQLRanker(AbstractRanker):
                 )
 
         ## record and count
-        if self.alter_update_step > 0:
+        if self.ac_update_step > 0 and self.embed_update_step > 0:
             self.update_flag = 0  # 0: update ac, 1: update embed
             self.update_count = 0
         self.global_step = 0
@@ -270,7 +278,6 @@ class SAC_CQLRanker(AbstractRanker):
         self,
         input_feature_list,
         cum_input_feature_list,
-        position_input_list,
         candidates_list,
         reward_input_list,
     ):
@@ -281,14 +288,6 @@ class SAC_CQLRanker(AbstractRanker):
                 if self.embed_type != "None"
                 else torch.stack(cum_input_feature_list)
             )
-        elif self.state_type == "avg_pos":
-            features = (
-                torch.stack(input_feature_list)[:-1]
-                if self.embed_type != "None"
-                else torch.stack(cum_input_feature_list)
-            )
-            positions = torch.stack(position_input_list)
-            states = torch.cat([features, positions], dim=-1)
         elif self.state_type == "avg_rew":
             features = (
                 torch.stack(input_feature_list)[:-1]
@@ -297,15 +296,6 @@ class SAC_CQLRanker(AbstractRanker):
             )
             rewards = torch.stack(reward_input_list[:-1])
             states = torch.cat([features, rewards], dim=-1)
-        elif self.state_type == "avg_pos_rew":
-            features = (
-                torch.stack(input_feature_list)[:-1]
-                if self.embed_type != "None"
-                else torch.stack(cum_input_feature_list)
-            )
-            positions = torch.stack(position_input_list)
-            rewards = torch.stack(reward_input_list[:-1])
-            states = torch.cat([features, positions, rewards], dim=-1)
 
         states = states.to(torch.float32)
         candidates = torch.cat(candidates_list, dim=0).to(torch.float32)
@@ -335,7 +325,6 @@ class SAC_CQLRanker(AbstractRanker):
         states, candidates = self.prepare_input_state_and_candidates(
             input_feature_list,
             cum_input_feature_list,
-            position_input_list,
             candidates_list,
             reward_input_list,
         )
@@ -358,6 +347,7 @@ class SAC_CQLRanker(AbstractRanker):
                 states=states[i, :, :]
                 if self.embed_type == "None"
                 else states[: i + 1, :, :],
+                positions = position_input_list[i].to(torch.float32),
                 candidates=candidates,
                 masks=masks,
                 index=i,
@@ -390,6 +380,7 @@ class SAC_CQLRanker(AbstractRanker):
                     if self.embed_type == "None"
                     else states[: i + 2, :, :]
                 ),
+                positions=position_input_list[i].to(torch.float32),
                 candidates=candidates,
                 masks=masks,
                 index=i,
@@ -441,10 +432,7 @@ class SAC_CQLRanker(AbstractRanker):
             % (
                 self.global_step,
                 "\t".join(
-                    [
-                        "%s:%.3f" % (key, value)
-                        for key, value in self.q_summary.items()
-                    ]
+                    ["%s:%.3f" % (key, value) for key, value in self.q_summary.items()]
                 ),
                 "\t".join(
                     [
@@ -453,27 +441,34 @@ class SAC_CQLRanker(AbstractRanker):
                     ]
                 ),
                 "\t".join(
-                    ["%s:%.3f" % (key, value) for key, value in self.norm_summary.items()]
+                    [
+                        "%s:%.3f" % (key, value)
+                        for key, value in self.norm_summary.items()
+                    ]
                 ),
             )
         )
 
         self.global_step += 1
-        if self.alter_update_step > 0:
+        if self.ac_update_step > 0 and self.embed_update_step > 0:
             self.update_count += 1
-            if self.update_count % self.alter_update_step == 0:
-                self.update_count = 0
-                self.update_flag = 1 - self.update_flag
-                if self.update_flag:
+            if self.update_flag == 0:  # update ac
+                if self.update_count % self.ac_update_step == 0:
+                    self.update_count = 0
+                    self.update_flag = 1
                     print(f"Step {self.global_step}, switch to update embedding model!")
-                else:
-                    print(f"Step {self.global_step}, switch to update actor and critirs!")
+            else:
+                if self.update_count % self.embed_update_step == 0:
+                    self.update_count = 0
+                    self.update_flag = 0
+                    print(f"Step {self.global_step}, switch to update actor critirs!")
 
         return self.loss_summary, self.norm_summary, self.q_summary
 
     def update_actor(
         self,
         states,
+        positions,
         candidates,
         masks,
         index,
@@ -482,10 +477,12 @@ class SAC_CQLRanker(AbstractRanker):
         tmp_states = states.detach().to(self.device)
         tmp_candidates = candidates.detach().to(self.device)
         tmp_masks = masks.detach().to(self.device)
+        tmp_positions = positions.detach().to(self.device)
         # print(tmp_states.dtype)
         if self.embed_type != "None":
             tmp_states, _ = self.embed_model(tmp_states)
             tmp_states = tmp_states[-1]
+        tmp_states = torch.cat([tmp_states, tmp_positions], dim=1)
 
         ## actor loss
         _, action_probs, log_action_probs = self.actor.evaluate(
@@ -510,7 +507,7 @@ class SAC_CQLRanker(AbstractRanker):
             ).mean()
 
         ## updates networks
-        if self.alter_update_step > 0:
+        if self.ac_update_step > 0 and self.embed_update_step > 0:
             if self.update_flag:  # update embed
                 self.embed_optimizer.zero_grad()
                 actor_loss.backward()
@@ -537,19 +534,23 @@ class SAC_CQLRanker(AbstractRanker):
                         self.alpha_lr_optimizer.step()
         else:  # update actor, embed and actor alpha
             self.actor_optimizer.zero_grad()
-            self.embed_optimizer.zero_grad()
+            if self.embed_type != "None" and self.update_embed:
+                self.embed_optimizer.zero_grad()
             actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                self.embed_model.parameters(), self.max_gradient_norm
-            )
+            if self.embed_type != "None" and self.update_embed:
+                torch.nn.utils.clip_grad_norm_(
+                    self.embed_model.parameters(), self.max_gradient_norm
+                )
             torch.nn.utils.clip_grad_norm_(
                 self.actor.parameters(), self.max_gradient_norm
             )
             self.actor_optimizer.step()
-            self.embed_optimizer.step()
+            if self.embed_type != "None" and self.update_embed:
+                self.embed_optimizer.step()
             if self.lr_decay_type != "None":
                 self.actor_lr_optimizer.step()
-                self.embed_lr_optimizer.step()
+                if self.embed_type != "None" and self.update_embed:
+                    self.embed_lr_optimizer.step()
             if self.auto_actor_alpha:
                 self.alpha_optimizer.zero_grad()
                 alpha_loss.backward()
@@ -572,15 +573,18 @@ class SAC_CQLRanker(AbstractRanker):
         actions,
         rewards,
         next_states,
+        positions,
         candidates,
         masks,
         index,
     ):
         ## detach from outside, in case error in calculate graph
+        tmp_positions = positions.detach().to(self.device)
         tmp_states = states.detach().to(self.device)
         if self.embed_type != "None":
             tmp_states, _ = self.embed_model(tmp_states)
             tmp_states = tmp_states[-1]
+        tmp_states = torch.cat([tmp_states, tmp_positions], dim=-1)
         tmp_actions = actions.detach().to(self.device)
         tmp_rewards = rewards.detach().to(self.device)
         if next_states != None:
@@ -588,6 +592,7 @@ class SAC_CQLRanker(AbstractRanker):
             if self.embed_type != "None":
                 tmp_next_states, _ = self.embed_model(tmp_next_states)
                 tmp_next_states = tmp_next_states[-1]
+            tmp_next_states = torch.cat([tmp_next_states, tmp_positions], dim=-1)
         else:
             tmp_next_states = None
         tmp_candidates = candidates.detach().to(self.device)
@@ -661,7 +666,7 @@ class SAC_CQLRanker(AbstractRanker):
         total_loss = total_c1_loss + total_c2_loss
 
         ## update critics
-        if self.alter_update_step > 0:
+        if self.ac_update_step > 0 and self.embed_update_step > 0:
             if self.update_flag:  # update embed
                 self.embed_optimizer.zero_grad()
                 total_loss.backward()
@@ -699,20 +704,24 @@ class SAC_CQLRanker(AbstractRanker):
                 if self.lr_decay_type != "None":
                     self.cql_alpha_lr_optimizer.step()
             self.critic_optimizer.zero_grad()
-            self.embed_optimizer.zero_grad()
+            if self.embed_type != "None" and self.update_embed:
+                self.embed_optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(
                 list(self.critic1.parameters()) + list(self.critic2.parameters()),
                 self.max_gradient_norm,
             )
-            torch.nn.utils.clip_grad_norm_(
-                self.embed_model.parameters(), self.max_gradient_norm
-            )
+            if self.embed_type != "None" and self.update_embed:
+                torch.nn.utils.clip_grad_norm_(
+                    self.embed_model.parameters(), self.max_gradient_norm
+                )
             self.critic_optimizer.step()
-            self.embed_optimizer.step()
+            if self.embed_type != "None" and self.update_embed:
+                self.embed_optimizer.step()
             if self.lr_decay_type != "None":
                 self.critic_lr_optimizer.step()
-                self.embed_lr_optimizer.step()
+                if self.embed_type != "None" and self.update_embed:
+                    self.embed_lr_optimizer.step()
 
         ## soft update target
         for target_param, local_param in zip(
@@ -742,10 +751,11 @@ class SAC_CQLRanker(AbstractRanker):
 
         ## embed norm
         embed_norm = 0.0
-        for param in self.embed_model.parameters():
-            param_norm = param.grad.data.norm(2)
-            embed_norm += param_norm.item() ** 2
-        embed_norm = embed_norm ** (1.0 / 2)
+        if self.embed_type != "None" and self.update_embed:
+            for param in self.embed_model.parameters():
+                param_norm = param.grad.data.norm(2)
+                embed_norm += param_norm.item() ** 2
+            embed_norm = embed_norm ** (1.0 / 2)
 
         return (
             critic1_loss,
@@ -842,7 +852,7 @@ class SAC_CQLRanker(AbstractRanker):
                 ).reshape(1, -1),
                 local_batch_size,
                 dim=0,
-            )
+            ).to(torch.float32).to(self.device)
 
             ## previous rewards (regard as all-zero)
             rewards = torch.zeros(local_batch_size, self.max_visuable_size)
@@ -858,17 +868,17 @@ class SAC_CQLRanker(AbstractRanker):
                         else input_feature_list[-1]
                     )
                 )
-            elif self.state_type == "avg_pos":
-                features = (
-                    cum_input_feature
-                    if self.embed_type == "None"
-                    else (
-                        torch.zeros(local_batch_size, self.feature_size)
-                        if i == 0
-                        else input_feature_list[-1]
-                    )
-                )
-                states = torch.cat([features, position_input], dim=1)
+            # elif self.state_type == "avg_pos":
+            #     features = (
+            #         cum_input_feature
+            #         if self.embed_type == "None"
+            #         else (
+            #             torch.zeros(local_batch_size, self.feature_size)
+            #             if i == 0
+            #             else input_feature_list[-1]
+            #         )
+            #     )
+            #     states = torch.cat([features, position_input], dim=1)
             elif self.state_type == "avg_rew":
                 features = (
                     cum_input_feature
@@ -883,20 +893,6 @@ class SAC_CQLRanker(AbstractRanker):
                     [features, rewards],
                     dim=1,
                 )
-            elif self.state_type == "avg_pos_rew":
-                features = (
-                    cum_input_feature
-                    if self.embed_type == "None"
-                    else (
-                        torch.zeros(local_batch_size, self.feature_size)
-                        if i == 0
-                        else input_feature_list[-1]
-                    )
-                )
-                states = torch.cat(
-                    [features, position_input, rewards],
-                    dim=1,
-                )
 
             states = states.to(torch.float32).to(self.device)
             if self.embed_type == "RNN":
@@ -909,6 +905,7 @@ class SAC_CQLRanker(AbstractRanker):
                     (h_state, c_state),
                 )
             states = states.reshape(1, -1, self.state_dim).squeeze()
+            states = torch.cat([states, position_input], dim=-1)
             index = self.get_action(states, candidates, masks)
 
             docid_list.append(  # list of [1 * batch_size] tensors

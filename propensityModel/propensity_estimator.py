@@ -48,13 +48,10 @@ class BasicPropensityEstimator:
     def getLambdaForOneList(self, click_list, use_non_clicked_data=False):
         lambdas = []
         for r in range(len(click_list)):
-            lamb = 0.0
-            if use_non_clicked_data or (click_list[r] > 0):
-                if r < len(self.lambda_list):
-                    lamb = self.lambda_list[r]
-                else:
-                    lamb = self.lambda_list[-1]
-            lambdas.append(lamb)
+            if r < len(self.lambda_list):
+                lambdas.append(self.lambda_list[r])
+            else:
+                lambdas.append(self.lambda_list[-1])
         return lambdas
 
     def loadEstimatorFromFile(self, file_name):
@@ -104,7 +101,7 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             if "click_model" in data:
                 self.click_model = CM.loadModelFromJson(data["click_model"])
             self.IPW_list = data["IPW_list"]
-            if self.click_model.model_name == "dependent_click_model":
+            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
                 self.lambda_list = data["Lambda_list"]
         return
 
@@ -123,17 +120,17 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         label_lists = copy.deepcopy(data_set.labels)
         # Conduct randomized click experiments
         session_num = 0
-        if self.click_model.model_name == "dependent_click_model":
+        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             last_click_count = torch.zeros(data_set.rank_list_size)
             position_click_count = torch.zeros(data_set.rank_list_size)
-        while session_num < 10e6:
+        while session_num < 1e6:
             index = random.randint(0, len(label_lists) - 1)
             random.shuffle(label_lists[index])
             click_list, _, _ = self.click_model.sampleClicksForOneList(
                 label_lists[index]
             )
             ## if dcm, estimate lambdas
-            if self.click_model.model_name == "dependent_click_model":
+            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
                 position_click_count[: len(click_list)] += torch.tensor(click_list)
                 if sum(click_list) != 0:
                     index = [i for i, e in enumerate(click_list) if e != 0][-1]
@@ -146,7 +143,7 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             session_num += 1
         # Count how many clicks happened on the 1st position for a list with
         # different lengths.
-        if self.click_model.model_name == "dependent_click_model":
+        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             self.lambda_list = (
                 1 - last_click_count / (position_click_count + 1e-6)
             ).tolist()
@@ -178,7 +175,7 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             "click_model": self.click_model.getModelJson(),
             "IPW_list": self.IPW_list,
         }
-        if self.click_model.model_name == "dependent_click_model":
+        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             json_dict = {
                 "click_model": self.click_model.getModelJson(),
                 "IPW_list": self.IPW_list,

@@ -16,6 +16,7 @@ import random
 import torch
 import json
 import copy
+import os
 
 import argparse
 
@@ -333,7 +334,10 @@ if __name__ == "__main__":
                 f"Epochs: {epochs}\tValid step: {steps_per_checkpoint}\tSave step: {steps_per_save}"
             )
             train_set = data_utils.read_data(path, "train", None, 0, logging)
-            valid_set = data_utils.read_data(path, "valid", None, 0, logging)
+            if os.path.isfile(path+"vali.txt"):
+                valid_set = data_utils.read_data(path, "vali", None, 0, logging)
+            else:
+                valid_set = data_utils.read_data(path, "valid", None, 0, logging)
             test_set = None
             max_candidate_num = max(train_set.rank_list_size, valid_set.rank_list_size)
             train_set.pad(max_candidate_num)

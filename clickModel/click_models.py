@@ -276,16 +276,23 @@ class DependentClickModel(ClickModel):
                 exam_p_list.append(0.0)
                 click_p_list.append(0.0)
                 continue
-            exam, click, exam_p, click_p = self.sampleClick(
+            # exam, click, exam_p, click_p = self.sampleClick(
+            #     rank, last_click, label_list[rank]
+            # )
+            click, click_p = self.sampleClick(
                 rank, last_click, label_list[rank]
             )
             click_p_list.append(click_p)
             click_list.append(click)
-            exam_p_list.append(exam_p)
+            # exam_p_list.append(exam_p)
+            exam_p = 1.0
             if click > 0:
-                last_click = True
-            if exam == 0:
-                done = True
+                exam_p = self.getExamProb(rank)
+                done = random.random() < 1 - exam_p
+                # last_click = True
+            # if exam == 0:
+            #     done = True
+            exam_p_list.append(exam_p)
         return click_list, exam_p_list, click_p_list
 
     def estimatePropensityWeightsForOneList(
@@ -303,16 +310,18 @@ class DependentClickModel(ClickModel):
         if not relevance_label == int(relevance_label):
             print("RELEVANCE LABEL MUST BE INTEGER!")
         relevance_label = int(relevance_label) if relevance_label > 0 else 0
-        exam_p = self.getExamProb(rank) if last_click else 1.0
+        # exam_p = self.getExamProb(rank) if last_click else 1.0
         click_p = self.click_prob[
             relevance_label if relevance_label < len(self.click_prob) else -1
         ]
-        exam = 1 if random.random() < exam_p else 0
-        if exam > 0:
-            click = 1 if random.random() < click_p else 0
-        else:
-            click = 0
-        return exam, click, exam_p, click_p
+        # exam = 1 if random.random() < exam_p else 0
+        # if exam > 0:
+        #     click = 1 if random.random() < click_p else 0
+        # else:
+        #     click = 0
+        click = 1 if random.random() < click_p else 0
+        # return exam, click, exam_p, click_p
+        return click, click_p
 
     def getExamProb(self, rank):
         return self.exam_prob[rank if rank < len(self.exam_prob) else -1]

@@ -8,9 +8,12 @@ cd ./propensityModel  # change to `propensity_estimator.py` directory
 
 
 # click_types=("dcm")
-click_types=("cascade" "pbm" "dcm" "ubm")
-etas=("0.5" "1" "2")
-min_probs=("0.1" "0.2" "0.3")
+# click_types=("cascade" "pbm" "dcm" "ubm")
+click_types=("cascade" "pbm" "dcm")
+# etas=("0.5" "1" "2")
+etas=("1")
+# min_probs=("0.1" "0.2" "0.3")
+min_probs=("0.1")
 rel_level=2
 
 

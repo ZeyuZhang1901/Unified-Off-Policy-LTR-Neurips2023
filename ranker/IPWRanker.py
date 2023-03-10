@@ -79,7 +79,7 @@ class IPWRanker(AbstractRanker):
         self.model.train()
 
         ## Compute propensity weights for the input data
-        if self.click_model.model_name == "dependent_click_model":
+        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             lbd, clicks = [], []
         else:
             pw = []
@@ -88,7 +88,7 @@ class IPWRanker(AbstractRanker):
                 input_feed[f"label{l}"][i] for l in range(self.max_visuable_size)
             ]
 
-            if self.click_model.model_name == "dependent_click_model":
+            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
                 lbd_list = self.propensity_estimator.getLambdaForOneList(click_list)
                 lbd.append(lbd_list)
                 clicks.append(click_list)
@@ -97,12 +97,13 @@ class IPWRanker(AbstractRanker):
                 pw.append(pw_list)
 
         ## train
-        if self.click_model.model_name == "dependent_click_model":
+        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             train_lbd = torch.as_tensor(np.array(lbd)).to(self.device)
             train_clicks = torch.as_tensor(np.array(clicks)).to(self.device)
-            train_pw = 1 / (
-                torch.cumprod(1 + 1e-9 - train_clicks * (1 - train_lbd), dim=1)
-                / (1 + 1e-9 - train_clicks * (1 - train_lbd))
+            train_pw = torch.clip(
+                1 / (torch.cumprod(1+1e-9- train_clicks * (1 - train_lbd), dim=1)
+                / (1 +1e-9- train_clicks * (1 - train_lbd))),
+                max=1e3
             )
         else:
             train_pw = torch.as_tensor(np.array(pw)).to(self.device)

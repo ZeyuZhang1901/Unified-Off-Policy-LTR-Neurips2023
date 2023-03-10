@@ -12,6 +12,7 @@ class Actor(nn.Module):
         self,
         action_dim,
         state_dim,
+        num_node_list,  # list of num strings
     ):
         """Params:
         - `feature_size`: dimension of feature vector
@@ -21,9 +22,23 @@ class Actor(nn.Module):
         self.action_dim = action_dim
         self.state_dim = state_dim
 
-        self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
-        self.ln2 = nn.Linear(256, 256)
-        self.ln3 = nn.Linear(256, 1)
+        num_node = self.action_dim + self.state_dim
+        num_node_list = num_node_list + [1]
+        self.sequential = nn.Sequential().to(dtype=torch.float32)
+        for i in range(len(num_node_list)):
+            next_num_node = int(num_node_list[i])
+            self.sequential.add_module(
+                f"linear{i+1}", nn.Linear(num_node, next_num_node)
+            )
+            if i != len(num_node_list) - 1:
+                self.sequential.add_module(f"activation{i+1}", nn.ReLU())
+            num_node = next_num_node
+
+        # self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
+        # self.ln2 = nn.Linear(256, 256)
+        # self.ln3 = nn.Linear(256, 256)
+        # self.ln4 = nn.Linear(256, 256)
+        # self.ln5 = nn.Linear(256, 1)
 
     def forward(
         self,
@@ -42,10 +57,12 @@ class Actor(nn.Module):
         state = torch.repeat_interleave(state, candidate_num, dim=0)
         input_data = torch.cat([state, candidates], dim=1).to(self.device)
 
-        output_data = F.relu(self.ln1(input_data))
-        output_data = F.relu(self.ln2(output_data))
-        output_data = self.ln3(output_data)
-        # output_data += 1e-10  # in case
+        # output_data = F.relu(self.ln1(input_data))
+        # output_data = F.relu(self.ln2(output_data))
+        # output_data = F.relu(self.ln3(output_data))
+        # output_data = F.relu(self.ln4(output_data))
+        # output_data = self.ln5(output_data)
+        output_data = self.sequential(input_data)
         output_data = output_data.reshape(-1, candidate_num)
         output_data = output_data - output_data.max(-1, keepdim=True).values
 
@@ -138,6 +155,7 @@ class Critic(nn.Module):
         self,
         action_dim,
         state_dim,
+        num_node_list,
     ):
         """Params:
         - `feature_size`: dimension of feature vector
@@ -147,9 +165,23 @@ class Critic(nn.Module):
         self.action_dim = action_dim
         self.state_dim = state_dim
 
-        self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
-        self.ln2 = nn.Linear(256, 256)
-        self.ln3 = nn.Linear(256, 1)
+        num_node = self.action_dim + self.state_dim
+        num_node_list = num_node_list + [1]
+        self.sequential = nn.Sequential().to(dtype=torch.float32)
+        for i in range(len(num_node_list)):
+            next_num_node = int(num_node_list[i])
+            self.sequential.add_module(
+                f"linear{i+1}", nn.Linear(num_node, next_num_node)
+            )
+            if i != len(num_node_list) - 1:
+                self.sequential.add_module(f"activation{i+1}", nn.ReLU())
+            num_node = next_num_node
+
+        # self.ln1 = nn.Linear(self.action_dim + self.state_dim, 256)
+        # self.ln2 = nn.Linear(256, 256)
+        # self.ln3 = nn.Linear(256, 256)
+        # self.ln4 = nn.Linear(256, 256)
+        # self.ln5 = nn.Linear(256, 1)
 
     def forward(
         self,
@@ -164,8 +196,11 @@ class Critic(nn.Module):
         state = torch.repeat_interleave(state, candidate_num, dim=0)
         input_data = torch.cat([state, candidates], dim=1)
 
-        output_data = F.relu(self.ln1(input_data))
-        output_data = F.relu(self.ln2(output_data))
-        output_data = self.ln3(output_data)
+        # output_data = F.relu(self.ln1(input_data))
+        # output_data = F.relu(self.ln2(output_data))
+        # output_data = F.relu(self.ln3(output_data))
+        # output_data = F.relu(self.ln4(output_data))
+        # output_data = self.ln5(output_data)
+        output_data = self.sequential(input_data)
 
         return output_data.reshape(-1, candidate_num)

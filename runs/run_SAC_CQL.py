@@ -367,7 +367,7 @@ if __name__ == "__main__":
                 if five_fold
                 else "{}/tmp_data/".format(dataset_fold)
             )
-        elif logging == "initial":
+        elif logging == "random":
             path = (
                 "{}/Fold{}/".format(dataset_fold, f)
                 if five_fold
