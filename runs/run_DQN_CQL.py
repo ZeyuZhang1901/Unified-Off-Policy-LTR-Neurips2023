@@ -1,7 +1,7 @@
 import sys
 
-sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
+sys.path.append("./")
+whole_path = "./"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.DQN_CQLRanker import DQN_CQLRanker
 from utils.input_feed import Train_Input_feed, Validation_Input_feed

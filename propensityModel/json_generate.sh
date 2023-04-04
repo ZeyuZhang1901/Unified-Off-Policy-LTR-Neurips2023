@@ -1,5 +1,5 @@
-model_fold=/home/zeyuzhang/LearningtoRank/codebase/myLTR/clickModel
-output_fold=/home/zeyuzhang/LearningtoRank/codebase/myLTR/propensityModel
+model_fold=D:/Projects/myLTR/clickModel
+output_fold=D:/Projects/myLTR/propensityModel
 data_fold=/home/zeyuzhang/LearningtoRank/datasets/MQ2008/Fold1/tmp_data/
 # mkdir $output_fold
 

@@ -1,4 +1,4 @@
-Data_path="/home/zeyuzhang/LearningtoRank/datasets/MQ2008"   ## Data path where to unzip the data
+Data_path="D:/Projects/MQ2008"   ## Data path where to unzip the data
 Data_folder="Fold1"            ## subfolder after unzip
 Feature_number=46              ## how many features for LETOR data
 Prepro_fun=""                ## additional function to do preprocessing, available, "log", "None", we default normalize data to -1 and 1. If choosing log, it will first using log function to the data and then normalize it to -1 and 1. 
@@ -35,44 +35,44 @@ python ./libsvm_tools/clean_tail.py $Data_path/$Data_folder/${prefix}train.txt $
 python ./libsvm_tools/clean_tail.py ${valid_name} ${valid_name} $Feature_number
 python ./libsvm_tools/clean_tail.py $Data_path/$Data_folder/${prefix}test.txt $Data_path/$Data_folder/${prefix}test.txt $Feature_number
 
-echo "begin cleaning"
-python ./libsvm_tools/clean_libsvm_file.py $Data_path/$Data_folder/${prefix}train.txt $Data_path/cleaned_data/train.txt 0
-python ./libsvm_tools/clean_libsvm_file.py ${valid_name}  $Data_path/cleaned_data/valid.txt 1
-python ./libsvm_tools/clean_libsvm_file.py $Data_path/$Data_folder/${prefix}test.txt $Data_path/cleaned_data/test.txt 1
-# Normalize the data
-# Extract the feature statistics for later normalization.
-echo "extract statistics for normalization"
-python ./libsvm_tools/extrac_feature_statistics.py $Data_path/cleaned_data/
-# Normalize the data.
-echo "begin normalization"
-python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/test.txt $Data_path/normalized/test.txt $Prepro_fun
-python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/train.txt $Data_path/normalized/train.txt $Prepro_fun
-python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/valid.txt $Data_path/normalized/valid.txt $Prepro_fun
-# Sample 50% training data to build the initial ranker.
-echo "sample 0.5 for intiial ranker"
-python ./libsvm_tools/sample_libsvm_data.py $Data_path/normalized/train.txt $Data_path/normalized/sampled_train.txt 0.5
+# echo "begin cleaning"
+# python ./libsvm_tools/clean_libsvm_file.py $Data_path/$Data_folder/${prefix}train.txt $Data_path/cleaned_data/train.txt 0
+# python ./libsvm_tools/clean_libsvm_file.py ${valid_name}  $Data_path/cleaned_data/valid.txt 1
+# python ./libsvm_tools/clean_libsvm_file.py $Data_path/$Data_folder/${prefix}test.txt $Data_path/cleaned_data/test.txt 1
+# # Normalize the data
+# # Extract the feature statistics for later normalization.
+# echo "extract statistics for normalization"
+# python ./libsvm_tools/extrac_feature_statistics.py $Data_path/cleaned_data/
+# # Normalize the data.
+# echo "begin normalization"
+# python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/test.txt $Data_path/normalized/test.txt $Prepro_fun
+# python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/train.txt $Data_path/normalized/train.txt $Prepro_fun
+# python ./libsvm_tools/normalize_feature.py $Data_path/cleaned_data/feature_scale.json  $Data_path/cleaned_data/valid.txt $Data_path/normalized/valid.txt $Prepro_fun
+# # Sample 50% training data to build the initial ranker.
+# echo "sample 0.5 for intiial ranker"
+# python ./libsvm_tools/sample_libsvm_data.py $Data_path/normalized/train.txt $Data_path/normalized/sampled_train.txt 0.5
 
-# # Download SVMrank.
-# wget http://download.joachims.org/svm_rank/current/svm_rank_linux64.tar.gz
-# tar xvzf svm_rank_linux64.tar.gz
+# # # Download SVMrank.
+# # wget http://download.joachims.org/svm_rank/current/svm_rank_linux64.tar.gz
+# # tar xvzf svm_rank_linux64.tar.gz
 
-# Conduct initial ranking with SVMrank.
-python ./libsvm_tools/initial_ranking_with_svm_rank.py \
-    ./ \
-    $Data_path/normalized/sampled_train.txt \
-    $Data_path/normalized/valid.txt \
-    $Data_path/normalized/test.txt \
-    $Data_path/tmp/
-./svm_rank_classify $Data_path/normalized/train.txt $Data_path/tmp/model.dat $Data_path/tmp/train.predict
+# # Conduct initial ranking with SVMrank.
+# python ./libsvm_tools/initial_ranking_with_svm_rank.py \
+#     ./ \
+#     $Data_path/normalized/sampled_train.txt \
+#     $Data_path/normalized/valid.txt \
+#     $Data_path/normalized/test.txt \
+#     $Data_path/tmp/
+# ./svm_rank_classify $Data_path/normalized/train.txt $Data_path/tmp/model.dat $Data_path/tmp/train.predict
 
-# Prepare model input.
-python ./libsvm_tools/prepare_exp_data_with_svmrank.py $Data_path/normalized/ $Data_path/tmp/ $Data_path/tmp_data/ $Feature_number
+# # Prepare model input.
+# python ./libsvm_tools/prepare_exp_data_with_svmrank.py $Data_path/normalized/ $Data_path/tmp/ $Data_path/tmp_data/ $Feature_number
 
 
-cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/train.txt
-cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/valid.txt
-cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/test.txt
-./svm_rank_classify $Data_path/tmp_toy/data/train.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/train.predict
-./svm_rank_classify $Data_path/tmp_toy/data/valid.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/valid.predict
-./svm_rank_classify $Data_path/tmp_toy/data/test.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/test.predict
-python ./libsvm_tools/prepare_exp_data_with_svmrank.py $Data_path/tmp_toy/data/ $Data_path/tmp_toy/tmp/ $Data_path/tmp_toy/tmp_data_toy/ $Feature_number
+# cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/train.txt
+# cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/valid.txt
+# cp $Data_path/normalized/sampled_train.txt $Data_path/tmp_toy/data/test.txt
+# ./svm_rank_classify $Data_path/tmp_toy/data/train.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/train.predict
+# ./svm_rank_classify $Data_path/tmp_toy/data/valid.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/valid.predict
+# ./svm_rank_classify $Data_path/tmp_toy/data/test.txt $Data_path/tmp/model.dat $Data_path/tmp_toy/tmp/test.predict
+# python ./libsvm_tools/prepare_exp_data_with_svmrank.py $Data_path/tmp_toy/data/ $Data_path/tmp_toy/tmp/ $Data_path/tmp_toy/tmp_data_toy/ $Feature_number

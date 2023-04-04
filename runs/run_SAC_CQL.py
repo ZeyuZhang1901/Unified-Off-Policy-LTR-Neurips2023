@@ -1,7 +1,7 @@
 import sys
 
-sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
+sys.path.append("./")
+whole_path = "./"
 from torch.utils.tensorboard import SummaryWriter
 from ranker.SAC_CQLRanker import SAC_CQLRanker
 from utils.input_feed import Train_Input_feed, Validation_Input_feed
@@ -125,10 +125,11 @@ def train(
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
         input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
-        loss_summary, norm_summary, q_summary = ranker.update_policy(input_feed)
+        loss_summary, norm_summary, q_summary, alpha_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
         writer.add_scalars("Q Value", q_summary, ranker.global_step)
+        writer.add_scalars("Alphas", alpha_summary, ranker.global_step)
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")

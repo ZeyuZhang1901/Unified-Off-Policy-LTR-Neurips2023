@@ -6,8 +6,8 @@ import sys
 from scipy.stats import sem, t
 from tensorboard.backend.event_processing import event_accumulator
 
-sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
-whole_path = "/home/zeyuzhang/LearningtoRank/codebase/myLTR/"
+sys.path.append("./")
+whole_path = "./"
 
 COLORS = [
     "blue",

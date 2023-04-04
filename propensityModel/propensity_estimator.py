@@ -5,7 +5,7 @@ import copy
 import random
 import torch
 
-sys.path.append("/home/zeyuzhang/LearningtoRank/codebase/myLTR/")
+sys.path.append("D:/Projects/myLTR/")
 
 from dataset import data_utils
 from clickModel import click_models as CM

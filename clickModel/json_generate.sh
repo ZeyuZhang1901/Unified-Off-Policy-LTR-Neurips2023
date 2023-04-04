@@ -1,4 +1,4 @@
-output_path=/home/zeyuzhang/LearningtoRank/codebase/myLTR/clickModel
+output_path=D:/Projects/myLTR/clickModel
 model_name=("pbm" "cascade" "dcm" "ubm")
 neg_click_prob=("0.1" "0.2" "0.3")
 pos_click_prob=1.0
