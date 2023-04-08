@@ -34,7 +34,10 @@ class SAC_CQLRanker(AbstractRanker):
         # state type and embedding
         self.state_type = hypers["state_type"]
         self.embed_type = hypers["embed_type"]  # if not using, set "None"
-        self.num_layer = hypers["num_layer"]
+        if hypers["num_layer"] != "None":
+            self.num_layer = hypers["num_layer"]  # for RNN and LSTM
+        if hypers["num_head"] != "None":
+            self.num_head = hypers["num_head"]  # for transformer
         self.update_embed = eval(hypers["update_embed"])
         # actor
         self.auto_actor_alpha = eval(hypers["auto_actor_alpha"])
@@ -49,6 +52,7 @@ class SAC_CQLRanker(AbstractRanker):
         # others
         self.ac_update_step = hypers["ac_update_step"]  # if 0, update together.
         self.embed_update_step = hypers["embed_update_step"]  # if 0, update together.
+        self.embed_nodes = hypers["embed_nodes"]  # int, the number of nodes in the embedding layer
         self.batch_size = hypers["batch_size"]
         self.discount = hypers["discount"]
         self.l2_loss = hypers["l2_loss"]
@@ -74,7 +78,7 @@ class SAC_CQLRanker(AbstractRanker):
         # state embedding model
         if self.embed_type == "RNN":
             self.embed_model = nn.RNN(
-                self.state_dim, self.state_dim, num_layers=self.num_layer
+                self.state_dim, self.embed_nodes, num_layers=self.num_layer
             ).to(self.device)
             self.embed_optimizer = optim.Adam(
                 self.embed_model.parameters(), lr=self.embed_lr
@@ -89,7 +93,7 @@ class SAC_CQLRanker(AbstractRanker):
                 )
         elif self.embed_type == "LSTM":
             self.embed_model = nn.LSTM(
-                self.state_dim, self.state_dim, num_layers=self.num_layer
+                self.state_dim, self.embed_nodes, num_layers=self.num_layer
             ).to(self.device)
             self.embed_optimizer = optim.Adam(
                 self.embed_model.parameters(), lr=self.embed_lr
@@ -104,8 +108,9 @@ class SAC_CQLRanker(AbstractRanker):
                 )
         elif self.embed_type == "ATTENTION":
             self.embed_model = nn.MultiheadAttention(
-                embed_dim= self.state_dim, num_heads=2
+                embed_dim= self.state_dim, num_heads=self.num_head
             ).to(self.device)
+            assert self.embed_dim % self.num_head == 0, "embed_dim must be divisible by num_head"
             self.embed_optimizer = optim.Adam(
                 self.embed_model.parameters(), lr=self.embed_lr
             )
@@ -121,7 +126,7 @@ class SAC_CQLRanker(AbstractRanker):
         ## Actor net
         self.actor = Actor(
             action_dim=self.feature_size,
-            state_dim=self.state_dim,
+            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
             num_node_list=self.actor_node_list,
         ).to(self.device)
         # self.actor = Actor(
@@ -161,12 +166,12 @@ class SAC_CQLRanker(AbstractRanker):
         ## Critic net
         self.critic1 = Critic(
             action_dim=self.feature_size,
-            state_dim=self.state_dim,
+            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
             num_node_list=self.critic_node_list,
         ).to(self.device)
         self.critic2 = Critic(
             action_dim=self.feature_size,
-            state_dim=self.state_dim,
+            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
             num_node_list=self.critic_node_list,
         ).to(self.device)
         # self.critic1 = Critic(

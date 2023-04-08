@@ -52,24 +52,55 @@ class DQN_CQLRanker(AbstractRanker):
         ## state setting and embedding
         if self.state_type == "avg":
             self.state_dim = self.feature_size
-        elif self.state_type == "avg_pos":
-            self.state_dim = 2 * self.feature_size
         elif self.state_type == "avg_rew":
             self.state_dim = self.feature_size + max_visuable_size
-        elif self.state_type == "avg_pos_rew":
-            self.state_dim = 2 * self.feature_size + max_visuable_size
+
         # state embedding model
         if self.embed_type == "RNN":
             self.embed_model = nn.RNN(
                 self.state_dim, self.state_dim, num_layers=self.num_layer
             ).to(self.device)
+            self.embed_optimizer = optim.Adam(
+                self.embed_model.parameters(), lr=self.embed_lr
+            )
+            if self.lr_decay_type == "exp":
+                self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.embed_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.embed_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.embed_optimizer, step_size=5000, gamma=0.1
+                )
         elif self.embed_type == "LSTM":
             self.embed_model = nn.LSTM(
                 self.state_dim, self.state_dim, num_layers=self.num_layer
             ).to(self.device)
-        # self.embed_optimizer = optim.Adam(
-        #     self.embed_model.parameters(), lr=self.embed_lr
-        # )
+            self.embed_optimizer = optim.Adam(
+                self.embed_model.parameters(), lr=self.embed_lr
+            )
+            if self.lr_decay_type == "exp":
+                self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.embed_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.embed_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.embed_optimizer, step_size=5000, gamma=0.1
+                )
+        elif self.embed_type == "ATTENTION":
+            self.embed_model = nn.MultiheadAttention(
+                embed_dim= self.state_dim, num_heads=2
+            ).to(self.device)
+            self.embed_optimizer = optim.Adam(
+                self.embed_model.parameters(), lr=self.embed_lr
+            )
+            if self.lr_decay_type == "exp":
+                self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
+                    self.embed_optimizer, gamma=0.9993
+                )
+            elif self.lr_decay_type == "step":
+                self.embed_lr_optimizer = optim.lr_scheduler.StepLR(
+                    self.embed_optimizer, step_size=5000, gamma=0.1
+                )
 
         ## policy and target network
         self.policy_net = DDQN(
