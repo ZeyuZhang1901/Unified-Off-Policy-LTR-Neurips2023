@@ -34,9 +34,10 @@ class SAC_CQLRanker(AbstractRanker):
         # state type and embedding
         self.state_type = hypers["state_type"]
         self.embed_type = hypers["embed_type"]  # if not using, set "None"
-        if hypers["num_layer"] != "None":
+        if "num_layer" in hypers.keys():
             self.num_layer = hypers["num_layer"]  # for RNN and LSTM
-        if hypers["num_head"] != "None":
+            self.embed_nodes = hypers["embed_nodes"]  # int, the number of nodes in the embedding layer
+        if "num_head" in hypers.keys():
             self.num_head = hypers["num_head"]  # for transformer
         self.update_embed = eval(hypers["update_embed"])
         # actor
@@ -52,7 +53,6 @@ class SAC_CQLRanker(AbstractRanker):
         # others
         self.ac_update_step = hypers["ac_update_step"]  # if 0, update together.
         self.embed_update_step = hypers["embed_update_step"]  # if 0, update together.
-        self.embed_nodes = hypers["embed_nodes"]  # int, the number of nodes in the embedding layer
         self.batch_size = hypers["batch_size"]
         self.discount = hypers["discount"]
         self.l2_loss = hypers["l2_loss"]
@@ -907,18 +907,18 @@ class SAC_CQLRanker(AbstractRanker):
         )
         if self.embed_type == "RNN":
             h_state = (
-                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                torch.zeros(self.num_layer, local_batch_size, self.embed_nodes)
                 .to(self.device)
                 .to(torch.float32)
             )  # hidden state in embedding
         elif self.embed_type == "LSTM":
             h_state = (
-                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                torch.zeros(self.num_layer, local_batch_size, self.embed_nodes)
                 .to(self.device)
                 .to(torch.float32)
             )
             c_state = (
-                torch.zeros(self.num_layer, local_batch_size, self.state_dim)
+                torch.zeros(self.num_layer, local_batch_size, self.embed_nodes)
                 .to(self.device)
                 .to(torch.float32)
             )  # long-time hidden state in embedding
@@ -1015,7 +1015,7 @@ class SAC_CQLRanker(AbstractRanker):
                 )
                 states = states[-1]
                 all_states[i] = states
-            states = states.reshape(1, -1, self.state_dim).squeeze()
+            states = states.reshape(1, -1, self.embed_nodes).squeeze()
             # states = torch.cat([states, position_input], dim=-1)
             # states = states + position_input  # add position embedding
             index = self.get_action(states, candidates, masks)

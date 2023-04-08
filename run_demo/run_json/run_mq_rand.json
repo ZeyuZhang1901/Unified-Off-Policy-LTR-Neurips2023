@@ -1,0 +1,25 @@
+{
+    "feature_size": 46,
+    "max_visuable_size": 10,
+    "batch_size": 256,
+    "dataset_fold": "D:/Projects/MQ2008",
+    "logging": "random",
+    "click_models": [
+        "dcm",
+        "cascade",
+        "pbm"
+    ],
+    "etas": [
+        1
+    ],
+    "min_probs": [
+        0.1
+    ],
+    "rel_level": 2,
+    "five_fold": "True",
+
+    
+    "epochs": 1000,
+    "steps_per_checkpoint": 10,
+    "steps_per_save": 500
+}
