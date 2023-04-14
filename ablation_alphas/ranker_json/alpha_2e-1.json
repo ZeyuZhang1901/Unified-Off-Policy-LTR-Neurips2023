@@ -33,6 +33,6 @@
     "using_cql": "True",
     "with_lagrange": "False",
     "target_action_gap": 0.0,
-    "initial_log_cql_alpha": 0.0
+    "initial_log_cql_alpha": -0.69897
 
 }

@@ -1,11 +1,13 @@
 {
-    "feature_size": 46,
+    "feature_size": 136,
     "max_visuable_size": 10,
     "batch_size": 256,
-    "dataset_fold": "D:/Projects/MQ2008",
+    "dataset_fold": "/content/MSLR-WEB10K",
     "logging": "svm",
     "click_models": [
-        "dcm"
+        "dcm",
+        "cascade",
+        "pbm"
     ],
     "etas": [
         1
@@ -13,11 +15,11 @@
     "min_probs": [
         0.1
     ],
-    "rel_level": 2,
+    "rel_level": 4,
     "five_fold": "True",
 
     
-    "epochs": 1000,
+    "epochs": 2000,
     "steps_per_checkpoint": 10,
     "steps_per_save": 500
 }

@@ -11,9 +11,11 @@ class Train_Input_feed(object):
         self,
         click_model,
         max_visuable_size,
+        max_candidate_num,
         batch_size,
     ) -> None:
         self.max_visuable_size = max_visuable_size  # max position the user can see
+        self.max_candidate_num = max_candidate_num  # max candidate number
         self.batch_size = batch_size
 
         self.click_model = click_model
@@ -55,6 +57,43 @@ class Train_Input_feed(object):
             )
         )
         labels.append(click_list)
+
+    def prepare_true_labels(
+        self,
+        dataset,
+        index,
+        docid_inputs,
+        letor_features,
+        labels,
+        check_validation=False,
+    ):
+        ## Get all labels for docs under this query (if invalid doc, set 0)
+        i = index
+        label_list = [
+            0 if dataset.initial_list[i][x] < 0 else dataset.labels[i][x]
+            for x in range(self.max_candidate_num)
+        ]
+
+        ## Check if there is relevant docs in this query
+        if check_validation and sum(label_list) == 0:
+            return
+
+        ## Get all doc_features under this query (if invalid doc, do nothing)
+        ## Add  features, docid_list, label_list to whole input list
+        base = len(letor_features)
+        for x in range(self.max_candidate_num):
+            if dataset.initial_list[i][x] >= 0:
+                letor_features.append(dataset.features[dataset.initial_list[i][x]])
+        docid_inputs.append(
+            list(
+                [
+                    -1 if dataset.initial_list[i][x] < 0 else base + x
+                    for x in range(self.max_candidate_num)
+                ]
+            )
+        )
+        labels.append(label_list)
+        return
 
     def get_train_batch(
         self,
@@ -128,6 +167,65 @@ class Train_Input_feed(object):
         #         )
 
         return input_feed
+    
+    def get_batch(
+        self,
+        offset,  # end point of last valid batch
+        dataset,
+        check_validation=False,
+    ):
+
+        length = len(dataset.initial_list)
+        docid_inputs, letor_features, labels = [], [], []
+
+        ## prepare docids, features and labels for each query in valid batch
+        remain_qid_num = length - offset
+        for i in range(min(self.batch_size, remain_qid_num)):
+            index = i + offset
+            self.prepare_true_labels(
+                dataset, index, docid_inputs, letor_features, labels, check_validation
+            )
+        local_batch_size = len(docid_inputs)
+        letor_features_length = len(letor_features)
+
+        ## mask invalid docids with max index (refer to zero feature vector)
+        for i in range(local_batch_size):
+            for j in range(self.max_candidate_num):
+                if docid_inputs[i][j] < 0:
+                    docid_inputs[i][j] = letor_features_length
+
+        ## construct batch_docid_inputs (list of float32 nparrays with shape [query_num])
+        ## and batch_labels (list of float32 nparrays with shape [query_num])
+        batch_docid_inputs = []
+        batch_labels = []
+        for length_idx in range(self.max_candidate_num):
+            batch_docid_inputs.append(
+                np.array(
+                    [
+                        docid_inputs[batch_idx][length_idx]
+                        for batch_idx in range(local_batch_size)
+                    ],
+                    dtype=np.float32,
+                )
+            )
+            batch_labels.append(
+                np.array(
+                    [
+                        labels[batch_idx][length_idx]
+                        for batch_idx in range(local_batch_size)
+                    ],
+                    dtype=np.float32,
+                )
+            )
+
+        ## Create input feed map
+        input_feed = {}
+        input_feed["letor_features"] = np.array(letor_features)
+        for l in range(self.max_candidate_num):
+            input_feed[f"docid_input{l}"] = batch_docid_inputs[l]
+            input_feed[f"label{l}"] = batch_labels[l]
+
+        return input_feed
 
 
 class Validation_Input_feed(object):
@@ -176,7 +274,7 @@ class Validation_Input_feed(object):
         labels.append(label_list)
         return
 
-    def get_validation_batch(
+    def get_batch(
         self,
         offset,  # end point of last valid batch
         dataset,

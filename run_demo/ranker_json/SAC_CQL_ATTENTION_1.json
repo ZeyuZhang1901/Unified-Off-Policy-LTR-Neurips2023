@@ -22,7 +22,7 @@
 
     "state_type": "avg",
     "embed_type": "ATTENTION",
-    "num_head": 2,
+    "num_head": 4,
     "update_embed": "True",
 
     "auto_actor_alpha": "False",
@@ -33,6 +33,6 @@
     "using_cql": "True",
     "with_lagrange": "False",
     "target_action_gap": 0.0,
-    "initial_log_cql_alpha": 0.0
+    "initial_log_cql_alpha": 2.0
 
 }

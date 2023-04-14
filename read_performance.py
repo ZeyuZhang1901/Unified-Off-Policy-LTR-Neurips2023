@@ -41,12 +41,13 @@ def read_performance(
 if __name__ == "__main__":
     performance_file_folder = r"./results_rand/"
     # performance_file_folder = r"current_best2\\results_svm\\"
-    output_file_path = r"./results_rand/performance.txt"
+    output_file_path = r"./results_rand/metric.txt"
 
     folder_nums = [1]
     run_nums = [[0,1,2,3],[4,5,6,7,8,9,10,11]]
-    embed_types = ['SAC_CQL_LSTM_', 'SAC_CQL_ATTENTION_']
-    exp_types = [embed_types[0] + str(x) for x in run_nums[0]] + [embed_types[1] + str(x) for x in run_nums[1]]
+    # embed_types = ['SAC_CQL_LSTM_', 'SAC_CQL_ATTENTION_']
+    # exp_types = [embed_types[0] + str(x) for x in run_nums[0]] + [embed_types[1] + str(x) for x in run_nums[1]]
+    exp_types = ["SAC_CQL_ATTENTION", "SAC_CQL_LSTM"]
     click_types = ['pbm', 'dcm', 'cascade']
 
     fout = open(output_file_path, 'w')

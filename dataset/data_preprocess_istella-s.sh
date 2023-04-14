@@ -1,12 +1,10 @@
-Data_path="/home/zeyuzhang/LearningtoRank/datasets/Istella"   ## Data path where to unzip the data
-Data_folder="full"            ## subfolder after unzip
+Data_path="C:\Users\ZeyuZhang\Downloads\istella-s-letor"   ## Data path where to unzip the data
+Data_folder="sample"            ## subfolder after unzip
 Feature_number=220             ## how many features for LETOR data
 Prepro_fun="log"                ## additional function to do preprocessing, available, "log", "None", we default normalize data to -1 and 1. If choosing log, it will first using log function to the data and then normalize it to -1 and 1. 
 prefix=""                       ## name before data, for example setl.train.txt, prefix=set1.
 # Data_zip_file=./MSLR-WEB10K.zip ## zipped data file path.
 # cd ../../
-# Download MSLR-WEB10K dataset.
-# view https://www.microsoft.com/en-us/research/project/mslr/ for the download link
 
 mkdir $Data_path
 mkdir $Data_path/cleaned_data  # path to store data after cleaning

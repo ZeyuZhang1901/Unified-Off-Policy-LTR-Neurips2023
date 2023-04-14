@@ -110,7 +110,7 @@ class SAC_CQLRanker(AbstractRanker):
             self.embed_model = nn.MultiheadAttention(
                 embed_dim= self.state_dim, num_heads=self.num_head
             ).to(self.device)
-            assert self.embed_dim % self.num_head == 0, "embed_dim must be divisible by num_head"
+            assert self.state_dim % self.num_head == 0, "embed_dim must be divisible by num_head"
             self.embed_optimizer = optim.Adam(
                 self.embed_model.parameters(), lr=self.embed_lr
             )
@@ -335,7 +335,7 @@ class SAC_CQLRanker(AbstractRanker):
                 else torch.stack(cum_input_feature_list)
             )
             # states = torch.cat([features, positions], dim=-1)
-            states = features + positions
+            states = features + positions  
 
         elif self.state_type == "avg_rew":
             features = (
@@ -720,7 +720,7 @@ class SAC_CQLRanker(AbstractRanker):
             cql_alpha_loss = torch.FloatTensor([0.0])
 
             if self.with_lagrange:
-                cql_alpha = torch.clamp(self.cql_log_alpha.exp(), min=0.0, max=1e6).to(
+                cql_alpha = torch.clamp(torch.pow(torch.FloatTensor([10]), self.cql_log_alpha), min=0.0, max=1e6).to(
                     self.device
                 )
                 cql1_scaled_loss = cql_alpha * (
@@ -735,10 +735,8 @@ class SAC_CQLRanker(AbstractRanker):
                 total_c1_loss = critic1_loss + cql1_scaled_loss
                 total_c2_loss = critic2_loss + cql2_scaled_loss
             else:
-                self.cql_log_alpha = torch.FloatTensor([self.initial_log_cql_alpha]).to(
-                    self.device
-                )
-                cql_alpha = torch.exp(self.cql_log_alpha)
+                self.cql_log_alpha = torch.FloatTensor([self.initial_log_cql_alpha])
+                cql_alpha = torch.pow(torch.FloatTensor([10]), self.cql_log_alpha).to(self.device)
                 total_c1_loss = critic1_loss + cql_alpha * cql1_scaled_loss
                 total_c2_loss = critic2_loss + cql_alpha * cql2_scaled_loss
         else:
@@ -1015,7 +1013,9 @@ class SAC_CQLRanker(AbstractRanker):
                 )
                 states = states[-1]
                 all_states[i] = states
-            states = states.reshape(1, -1, self.embed_nodes).squeeze()
+            states = states.reshape(1, -1, self.state_dim).squeeze() \
+                if self.embed_type == "ATTENTION" \
+                else states.reshape(1, -1, self.embed_nodes).squeeze()
             # states = torch.cat([states, position_input], dim=-1)
             # states = states + position_input  # add position embedding
             index = self.get_action(states, candidates, masks)

@@ -3,7 +3,7 @@ output_fold=./run_demo  # switch to your
 # running_json_file=$output_fold/run_json/run_mq_rand.json
 # running_json_file=$output_fold/run_json/run_mq_svm.json
 start_epoch=0
-embed_type="LSTM"  # "RNN", "LSTM" or "ATTENTION"
+embed_type="ATTENTION"  # "RNN", "LSTM" or "ATTENTION"
 
 # # DLA train and test
 # echo "DLA running..."
@@ -13,8 +13,12 @@ embed_type="LSTM"  # "RNN", "LSTM" or "ATTENTION"
 # python ./runs/run_DLA.py --output_fold $output_fold/results/DLA \
 #     --ranker_json_file $rank_json_file \
 #     --running_json_file $running_json_file \
+#     --start_epoch $start_epoch 
+# python ./runs/run_DLA.py --output_fold $output_fold/results/DLA \
+#     --ranker_json_file $rank_json_file \
+#     --running_json_file $running_json_file \
 #     --start_epoch $start_epoch \
-#     # --test_only 
+#     --test_only 
 
 # running_json_file=$output_fold/run_json/run_mq_rand.json
 # rank_json_file=D:/Projects/myLTR/run_demo/ranker_json/DLA.json
@@ -25,23 +29,20 @@ embed_type="LSTM"  # "RNN", "LSTM" or "ATTENTION"
 #     --start_epoch $start_epoch \
 #     # --test_only 
 
-## (CM) IPW train and test
+# # (CM) IPW train and test
 # echo "IPW running..."
 # rank_json_file=D:/Projects/myLTR/run_demo/ranker_json/IPW.json
+# running_json_file=$output_fold/run_json/run_mq_svm.json
 # mkdir -p $output_fold/results/IPW
 # python ./runs/run_IPW.py --output_fold $output_fold/results/IPW \
 #     --ranker_json_file $rank_json_file \
 #     --running_json_file $running_json_file \
-#     --start_epoch $start_epoch \
-#     # --test_only 
-# echo "IPW running..."
-# rank_json_file=D:/Projects/myLTR/run_demo/ranker_json/IPW.json
-# mkdir -p $output_fold/results/IPW
-# python ./runs/run_IPW.py --output_fold $output_fold/results/IPW_oracle \
+#     --start_epoch $start_epoch
+# python ./runs/run_IPW.py --output_fold $output_fold/results/IPW \
 #     --ranker_json_file $rank_json_file \
 #     --running_json_file $running_json_file \
 #     --start_epoch $start_epoch \
-#     # --test_only 
+#     --test_only 
 
 # SAC-CQL train and test
 running_json_file=$output_fold/run_json/run_mq_svm.json
@@ -58,19 +59,19 @@ python ./runs/run_SAC_CQL.py --output_fold $output_fold/results_svm/SAC_CQL_$emb
     --start_epoch $start_epoch \
     --test_only 
 
-running_json_file=$output_fold/run_json/run_mq_rand.json
-echo "SAC-CQL running random..."
-rank_json_file=$output_fold/ranker_json/SAC_CQL_$embed_type.json
-mkdir -p $output_fold/results_rand/SAC_CQL_$embed_type
-python ./runs/run_SAC_CQL.py --output_fold $output_fold/results_rand/SAC_CQL_$embed_type \
-    --ranker_json_file $rank_json_file \
-    --running_json_file $running_json_file \
-    --start_epoch $start_epoch
-python ./runs/run_SAC_CQL.py --output_fold $output_fold/results_rand/SAC_CQL_$embed_type \
-    --ranker_json_file $rank_json_file \
-    --running_json_file $running_json_file \
-    --start_epoch $start_epoch \
-    --test_only 
+# running_json_file=$output_fold/run_json/run_mq_rand.json
+# echo "SAC-CQL running random..."
+# rank_json_file=$output_fold/ranker_json/SAC_CQL_$embed_type.json
+# mkdir -p $output_fold/results_rand/SAC_CQL_$embed_type
+# python ./runs/run_SAC_CQL.py --output_fold $output_fold/results_rand/SAC_CQL_$embed_type \
+#     --ranker_json_file $rank_json_file \
+#     --running_json_file $running_json_file \
+#     --start_epoch $start_epoch
+# python ./runs/run_SAC_CQL.py --output_fold $output_fold/results_rand/SAC_CQL_$embed_type \
+#     --ranker_json_file $rank_json_file \
+#     --running_json_file $running_json_file \
+#     --start_epoch $start_epoch \
+#     --test_only 
 
 ## DQN-CQL train and test
 # echo "DQN-CQL running..."

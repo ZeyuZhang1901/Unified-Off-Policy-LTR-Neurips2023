@@ -122,7 +122,9 @@ def train(
 
         if (i + 1) % steps_per_checkpoint == 0:
             print(f"Checkpoint at step {ranker.global_step}")
+            train_summary = validation(train_set, train_input_feed, ranker)
             valid_summary = validation(valid_set, valid_input_feed, ranker)
+            writer.add_scalars("Train_eval", train_summary, ranker.global_step)
             writer.add_scalars("Validation", valid_summary, ranker.global_step)
             for key, value in valid_summary.items():
                 print(key, value)
@@ -172,7 +174,7 @@ def validation(
     summary_list = []
     batch_size_list = []
     while offset < len(dataset.initial_list):
-        input_feed = data_input_feed.get_validation_batch(
+        input_feed = data_input_feed.get_batch(
             offset, dataset, check_validation=False
         )
         _, _, summary = ranker.validation(input_feed)
