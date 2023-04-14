@@ -486,8 +486,10 @@ class SAC_CQLRanker(AbstractRanker):
         self.q_summary["Critic_Q2"] = total_q2_values / self.max_visuable_size
         self.q_summary["Target_Q"] = total_q_target_values / self.max_visuable_size
         ## Alpha Summary
-        self.alpha_summary["AC_alpha"] = self.log_alpha.exp()
-        self.alpha_summary["CQL_alpha"] = self.cql_log_alpha.exp()
+        if self.auto_actor_alpha:
+            self.alpha_summary["AC_alpha"] = torch.pow(torch.tensor([10.0]), self.log_alpha)
+        if self.using_cql:
+            self.alpha_summary["CQL_alpha"] = torch.pow(torch.tensor([10.0]), self.cql_log_alpha)
 
         print(
             "Step %d\t%s\t%s\t%s\t%s"

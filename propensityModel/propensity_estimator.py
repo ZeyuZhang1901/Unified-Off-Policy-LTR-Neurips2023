@@ -123,7 +123,7 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             last_click_count = torch.zeros(data_set.rank_list_size)
             position_click_count = torch.zeros(data_set.rank_list_size)
-        while session_num < 1e6:
+        while session_num < 1e7:
             index = random.randint(0, len(label_lists) - 1)
             random.shuffle(label_lists[index])
             click_list, _, _ = self.click_model.sampleClicksForOneList(

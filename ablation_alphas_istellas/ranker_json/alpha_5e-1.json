@@ -1,0 +1,38 @@
+{
+    "actor_lr": 1e-4,
+    "critic_lr": 1e-4,
+    "alpha_lr": 1e-3,
+    "cql_alpha_lr": 1e-4,
+    "embed_lr": 1e-6,
+    "lr_decay_type": "None",
+
+    "ac_update_step": 0,
+    "embed_update_step": 0,
+    "batch_size": 256,
+    "max_gradient_norm": 5.0,
+    "soft_update": 5e-3,
+    "discount": 0.8,
+    "l2_loss": 1.0,
+    "metric_type": [
+        "err",
+        "ndcg"
+    ],
+    "metric_topn": [3,5,10],
+    "objective_metric": "ndcg_10",
+
+    "state_type": "avg",
+    "embed_type": "ATTENTION",
+    "num_head": 2,
+    "update_embed": "True",
+
+    "auto_actor_alpha": "False",
+    "initial_log_alpha": -10.0,
+    "actor_structure": [512, 256, 128],
+    "critic_structure": [512, 256, 128],
+    
+    "using_cql": "True",
+    "with_lagrange": "False",
+    "target_action_gap": 0.0,
+    "initial_log_cql_alpha": -0.3010299956639812
+
+}

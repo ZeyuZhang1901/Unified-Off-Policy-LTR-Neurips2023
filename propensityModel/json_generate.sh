@@ -1,6 +1,6 @@
-model_fold=D:/Projects/myLTR/clickModel
-output_fold=D:/Projects/myLTR/propensityModel
-data_fold=/home/zeyuzhang/LearningtoRank/datasets/MQ2008/Fold1/tmp_data/
+model_fold=D:/Projects/myLTR/clickModel  # path of click model json files
+output_fold=D:/Projects/myLTR/propensityModel  # path to store propensity model json files
+data_fold=/home/zeyuzhang/LearningtoRank/datasets/MQ2008/Fold1/tmp_data/  # path of dataset (down to "tmp_data" folder if logging is svm format)
 # mkdir $output_fold
 
 cd ./propensityModel  # change to `propensity_estimator.py` directory
