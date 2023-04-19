@@ -22,8 +22,9 @@
 
     "state_type": "avg",
     "embed_type": "ATTENTION",
-    "num_head": 2,
+    "num_head": 4,
     "update_embed": "True",
+    "embed_nodes": 256,
 
     "auto_actor_alpha": "False",
     "initial_log_alpha": -10.0,

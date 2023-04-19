@@ -36,7 +36,6 @@ class SAC_CQLRanker(AbstractRanker):
         self.embed_type = hypers["embed_type"]  # if not using, set "None"
         if "num_layer" in hypers.keys():
             self.num_layer = hypers["num_layer"]  # for RNN and LSTM
-            self.embed_nodes = hypers["embed_nodes"]  # int, the number of nodes in the embedding layer
         if "num_head" in hypers.keys():
             self.num_head = hypers["num_head"]  # for transformer
         self.update_embed = eval(hypers["update_embed"])
@@ -74,8 +73,15 @@ class SAC_CQLRanker(AbstractRanker):
             self.state_dim = self.feature_size
         elif self.state_type == "avg_rew":
             self.state_dim = self.feature_size + max_visuable_size
+        self.embed_nodes = hypers["embed_nodes"] \
+            if "embed_nodes" in hypers.keys() else self.state_dim # int, the number of nodes in the embedding layer
 
         # state embedding model
+        if self.embed_type != "None":
+            self.layernorm = nn.LayerNorm(self.embed_nodes).to(self.device)
+            self.layernorm_optimizer = optim.Adam(
+                self.layernorm.parameters(), lr=self.embed_lr
+            )
         if self.embed_type == "RNN":
             self.embed_model = nn.RNN(
                 self.state_dim, self.embed_nodes, num_layers=self.num_layer
@@ -107,12 +113,22 @@ class SAC_CQLRanker(AbstractRanker):
                     self.embed_optimizer, step_size=5000, gamma=0.1
                 )
         elif self.embed_type == "ATTENTION":
+            self.pre_embed = nn.Linear(self.state_dim, self.embed_nodes).to(self.device)
+            # self.pre_embed = nn.Sequential(
+            #     nn.Linear(self.state_dim, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, self.embed_nodes),
+            # ).to(self.device)
             self.embed_model = nn.MultiheadAttention(
-                embed_dim= self.state_dim, num_heads=self.num_head
+                embed_dim= self.embed_nodes, num_heads=self.num_head
             ).to(self.device)
-            assert self.state_dim % self.num_head == 0, "embed_dim must be divisible by num_head"
+            assert self.embed_nodes % self.num_head == 0, "embed_dim must be divisible by num_head"
             self.embed_optimizer = optim.Adam(
-                self.embed_model.parameters(), lr=self.embed_lr
+                list(self.embed_model.parameters()) + list(self.pre_embed.parameters()), lr=self.embed_lr
             )
             if self.lr_decay_type == "exp":
                 self.embed_lr_optimizer = optim.lr_scheduler.ExponentialLR(
@@ -126,7 +142,7 @@ class SAC_CQLRanker(AbstractRanker):
         ## Actor net
         self.actor = Actor(
             action_dim=self.feature_size,
-            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
+            state_dim=self.embed_nodes if self.embed_type != "None" else self.state_dim,
             num_node_list=self.actor_node_list,
         ).to(self.device)
         # self.actor = Actor(
@@ -166,12 +182,12 @@ class SAC_CQLRanker(AbstractRanker):
         ## Critic net
         self.critic1 = Critic(
             action_dim=self.feature_size,
-            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
+            state_dim=self.embed_nodes if self.embed_type != "None" else self.state_dim,
             num_node_list=self.critic_node_list,
         ).to(self.device)
         self.critic2 = Critic(
             action_dim=self.feature_size,
-            state_dim=self.state_dim if self.embed_type in ["ATTENTION", "None"] else self.embed_nodes,
+            state_dim=self.embed_nodes if self.embed_type != "None" else self.state_dim,
             num_node_list=self.critic_node_list,
         ).to(self.device)
         # self.critic1 = Critic(
@@ -550,11 +566,16 @@ class SAC_CQLRanker(AbstractRanker):
         # tmp_positions = positions.detach().to(self.device)
         # print(tmp_states.dtype)
         if self.embed_type == "ATTENTION":
-            tmp_states, _ = self.embed_model(tmp_states, tmp_states, tmp_states)
-            tmp_states = tmp_states[-1]
+            tmp_states_rep = self.pre_embed(tmp_states)  # change input dimension
+            tmp_states_res, _ = self.embed_model(tmp_states_rep, tmp_states_rep, tmp_states_rep)
+            tmp_states = self.layernorm(tmp_states_res + tmp_states_rep).mean(0)
+            # tmp_states = (tmp_states_res + tmp_states_rep).mean(0)
+            # tmp_states = (tmp_states_res + tmp_states_rep)[-1]
         elif self.embed_type != "None":
             tmp_states, _ = self.embed_model(tmp_states)
-            tmp_states = tmp_states[-1]
+            # tmp_states = tmp_states[-1]
+            tmp_states = self.layernorm(tmp_states).mean(0)
+            # tmp_states = tmp_states.mean(0)
         # tmp_states = torch.cat([tmp_states, tmp_positions], dim=1)
         # tmp_states = tmp_states + tmp_positions  # add position embedding
 
@@ -584,19 +605,21 @@ class SAC_CQLRanker(AbstractRanker):
         if self.ac_update_step > 0 and self.embed_update_step > 0:
             if self.update_flag:  # update embed
                 self.embed_optimizer.zero_grad()
+                self.layernorm_optimizer.zero_grad()
                 actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    self.embed_model.parameters(), self.max_gradient_norm
-                )
+                # torch.nn.utils.clip_grad_norm_(
+                #     self.embed_model.parameters(), self.max_gradient_norm
+                # )
                 self.embed_optimizer.step()
+                self.layernorm_optimizer.step()
                 if self.lr_decay_type != "None":
                     self.embed_lr_optimizer.step()
             else:  # update ac
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    self.actor.parameters(), self.max_gradient_norm
-                )
+                # torch.nn.utils.clip_grad_norm_(
+                #     self.actor.parameters(), self.max_gradient_norm
+                # )
                 self.actor_optimizer.step()
                 if self.lr_decay_type != "None":
                     self.actor_lr_optimizer.step()
@@ -610,17 +633,19 @@ class SAC_CQLRanker(AbstractRanker):
             self.actor_optimizer.zero_grad()
             if self.embed_type != "None" and self.update_embed:
                 self.embed_optimizer.zero_grad()
+                self.layernorm_optimizer.zero_grad()
             actor_loss.backward()
-            if self.embed_type != "None" and self.update_embed:
-                torch.nn.utils.clip_grad_norm_(
-                    self.embed_model.parameters(), self.max_gradient_norm
-                )
-            torch.nn.utils.clip_grad_norm_(
-                self.actor.parameters(), self.max_gradient_norm
-            )
+            # if self.embed_type != "None" and self.update_embed:
+            #     torch.nn.utils.clip_grad_norm_(
+            #         self.embed_model.parameters(), self.max_gradient_norm
+            #     )
+            # torch.nn.utils.clip_grad_norm_(
+            #     self.actor.parameters(), self.max_gradient_norm
+            # )
             self.actor_optimizer.step()
             if self.embed_type != "None" and self.update_embed:
                 self.embed_optimizer.step()
+                self.layernorm_optimizer.step()
             if self.lr_decay_type != "None":
                 self.actor_lr_optimizer.step()
                 if self.embed_type != "None" and self.update_embed:
@@ -659,11 +684,14 @@ class SAC_CQLRanker(AbstractRanker):
         #     tmp_next_positions = next_positions.detach().to(self.device)
         tmp_states = states.detach().to(self.device)
         if self.embed_type == "ATTENTION":
-            tmp_states, _ = self.embed_model(tmp_states, tmp_states, tmp_states)
-            tmp_states = tmp_states[-1]
+            tmp_states_rep = self.pre_embed(tmp_states)  # change input dimension
+            tmp_states_res, _ = self.embed_model(tmp_states_rep, tmp_states_rep, tmp_states_rep)
+            tmp_states = self.layernorm(tmp_states_res + tmp_states_rep).mean(0)
+            # tmp_states = (tmp_states_res + tmp_states_rep)[-1]
         elif self.embed_type != "None":
             tmp_states, _ = self.embed_model(tmp_states)
-            tmp_states = tmp_states[-1]
+            # tmp_states = tmp_states[-1]
+            tmp_states = self.layernorm(tmp_states).mean(0)
         # tmp_states = torch.cat([tmp_states, tmp_positions], dim=-1)
         # tmp_states = tmp_states + tmp_positions  # add position embedding
         tmp_actions = actions.detach().to(self.device)
@@ -671,13 +699,16 @@ class SAC_CQLRanker(AbstractRanker):
         if next_states != None:
             tmp_next_states = next_states.detach().to(self.device)
             if self.embed_type == "ATTENTION":
-                tmp_next_states, _ = self.embed_model(
-                    tmp_next_states, tmp_next_states, tmp_next_states
+                tmp_next_states_rep = self.pre_embed(tmp_next_states)  # change input dimension
+                tmp_next_states_res, _ = self.embed_model(
+                    tmp_next_states_rep, tmp_next_states_rep, tmp_next_states_rep
                 )
-                tmp_next_states = tmp_next_states[-1]
+                # tmp_next_states = (tmp_next_states_res + tmp_next_states_rep)[-1]
+                tmp_next_states = self.layernorm(tmp_next_states_res + tmp_next_states_rep).mean(0)
             elif self.embed_type != "None":
                 tmp_next_states, _ = self.embed_model(tmp_next_states)
-                tmp_next_states = tmp_next_states[-1]
+                # tmp_next_states = tmp_next_states[-1]
+                tmp_next_states = self.layernorm(tmp_next_states).mean(0)
             # tmp_next_states = torch.cat([tmp_next_states, tmp_next_positions], dim=-1)
             # tmp_next_states = tmp_next_states + tmp_next_positions  # add position embedding
         else:
@@ -754,30 +785,32 @@ class SAC_CQLRanker(AbstractRanker):
         if self.ac_update_step > 0 and self.embed_update_step > 0:
             if self.update_flag:  # update embed
                 self.embed_optimizer.zero_grad()
+                self.layernorm_optimizer.zero_grad()
                 total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    self.embed_model.parameters(), self.max_gradient_norm
-                )
+                # torch.nn.utils.clip_grad_norm_(
+                #     self.embed_model.parameters(), self.max_gradient_norm
+                # )
                 self.embed_optimizer.step()
+                self.layernorm_optimizer.step()
                 if self.lr_decay_type != "None":
                     self.embed_lr_optimizer.step()
             else:
                 if self.using_cql and self.with_lagrange:
                     self.cql_alpha_optimizer.zero_grad()
                     cql_alpha_loss.backward(retain_graph=True)
-                    torch.nn.utils.clip_grad_norm_(
-                        self.cql_log_alpha,
-                        self.max_gradient_norm,
-                    )
+                    # torch.nn.utils.clip_grad_norm_(
+                    #     self.cql_log_alpha,
+                    #     self.max_gradient_norm,
+                    # )
                     self.cql_alpha_optimizer.step()
                     if self.lr_decay_type != "None":
                         self.cql_alpha_lr_optimizer.step()
                 self.critic_optimizer.zero_grad()
                 total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    list(self.critic1.parameters()) + list(self.critic2.parameters()),
-                    self.max_gradient_norm,
-                )
+                # torch.nn.utils.clip_grad_norm_(
+                #     list(self.critic1.parameters()) + list(self.critic2.parameters()),
+                #     self.max_gradient_norm,
+                # )
                 self.critic_optimizer.step()
                 if self.lr_decay_type != "None":
                     self.critic_lr_optimizer.step()
@@ -791,18 +824,20 @@ class SAC_CQLRanker(AbstractRanker):
             self.critic_optimizer.zero_grad()
             if self.embed_type != "None" and self.update_embed:
                 self.embed_optimizer.zero_grad()
+                self.layernorm_optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                list(self.critic1.parameters()) + list(self.critic2.parameters()),
-                self.max_gradient_norm,
-            )
-            if self.embed_type != "None" and self.update_embed:
-                torch.nn.utils.clip_grad_norm_(
-                    self.embed_model.parameters(), self.max_gradient_norm
-                )
+            # torch.nn.utils.clip_grad_norm_(
+            #     list(self.critic1.parameters()) + list(self.critic2.parameters()),
+            #     self.max_gradient_norm,
+            # )
+            # if self.embed_type != "None" and self.update_embed:
+            #     torch.nn.utils.clip_grad_norm_(
+            #         self.embed_model.parameters(), self.max_gradient_norm
+            #     )
             self.critic_optimizer.step()
             if self.embed_type != "None" and self.update_embed:
                 self.embed_optimizer.step()
+                self.layernorm_optimizer.step()
             if self.lr_decay_type != "None":
                 self.critic_lr_optimizer.step()
                 if self.embed_type != "None" and self.update_embed:
@@ -924,7 +959,7 @@ class SAC_CQLRanker(AbstractRanker):
             )  # long-time hidden state in embedding
         elif self.embed_type == "ATTENTION":
             all_states = torch.zeros(
-                self.max_visuable_size, local_batch_size, self.state_dim
+                self.max_visuable_size, local_batch_size, self.embed_nodes
             ).to(self.device).to(torch.float32)
 
         ## construct rank list
@@ -1003,21 +1038,25 @@ class SAC_CQLRanker(AbstractRanker):
                 states, h_state = self.embed_model(
                     states.reshape(-1, local_batch_size, self.state_dim), h_state
                 )
+                states = self.layernorm(states)
             elif self.embed_type == "LSTM":
                 states, (h_state, c_state) = self.embed_model(
                     states.reshape(-1, local_batch_size, self.state_dim),
                     (h_state, c_state),
                 )
+                states = self.layernorm(states)
             elif self.embed_type == "ATTENTION":
-                tmp_sequence = all_states[:i+1, :, :].reshape(-1, local_batch_size, self.state_dim)
-                states, _ = self.embed_model(
+                tmp_states_rep = self.pre_embed(states)  # convert dimension to embed_nodes
+                all_states[i] = tmp_states_rep
+                tmp_sequence = all_states[:i+1, :, :].reshape(-1, local_batch_size, self.embed_nodes)
+                states_res, _ = self.embed_model(
                     tmp_sequence, tmp_sequence, tmp_sequence
                 )
-                states = states[-1]
-                all_states[i] = states
-            states = states.reshape(1, -1, self.state_dim).squeeze() \
-                if self.embed_type == "ATTENTION" \
-                else states.reshape(1, -1, self.embed_nodes).squeeze()
+                states = self.layernorm(tmp_sequence + states_res).mean(dim=0)
+                
+            states = states.reshape(1, -1, self.embed_nodes).squeeze() \
+                if self.embed_type != "None" \
+                else states.reshape(1, -1, self.state_dim).squeeze()
             # states = torch.cat([states, position_input], dim=-1)
             # states = states + position_input  # add position embedding
             index = self.get_action(states, candidates, masks)

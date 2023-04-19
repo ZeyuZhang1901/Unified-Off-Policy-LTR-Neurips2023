@@ -97,6 +97,11 @@ def train(
         if ranker.embed_type != "None":
             ckpt = torch.load(checkpoint_path + f"embed(step_{start_checkpoint}).ckpt")
             ranker.embed_model.load_state_dict(ckpt)
+            if ranker.embed_type == "ATTENTION":
+                ckpt = torch.load(
+                    checkpoint_path + f"pre_embed(step_{start_checkpoint}).ckpt"
+                )
+                ranker.pre_embed.load_state_dict(ckpt)
 
         ranker.global_step = start_checkpoint
 
@@ -153,6 +158,11 @@ def train(
                                     ranker.embed_model.state_dict(),
                                     checkpoint_path + "embed_best.ckpt",
                                 )
+                                if ranker.embed_type == "ATTENTION":
+                                    torch.save(
+                                        ranker.pre_embed.state_dict(),
+                                        checkpoint_path + "pre_embed_best.ckpt",
+                                    )
                             break
 
             sys.stdout.flush()
@@ -185,6 +195,11 @@ def train(
                     ranker.embed_model.state_dict(),
                     checkpoint_path + f"embed(step_{ranker.global_step}).ckpt",
                 )
+                if ranker.embed_type == "ATTENTION":
+                    torch.save(
+                        ranker.pre_embed.state_dict(),
+                        checkpoint_path + f"pre_embed(step_{ranker.global_step}).ckpt",
+                    )
 
 
 def validation(
@@ -227,6 +242,11 @@ def test(
         ckpt = torch.load(checkpoint_path + "embed_best.ckpt")
         ranker.embed_model.load_state_dict(ckpt)
         ranker.embed_model.eval()
+        if ranker.embed_type == "ATTENTION":
+            ckpt = torch.load(checkpoint_path + "pre_embed_best.ckpt")
+            ranker.pre_embed.load_state_dict(ckpt)
+            ranker.pre_embed.eval()
+        
 
     with torch.no_grad():
         test_summary = validation(test_set, test_input_feed, ranker)
@@ -428,5 +448,5 @@ if __name__ == "__main__":
                     processors.append(p)
         if not five_fold:  # if not using five-fold validation
             break
-    for p in processors:
-        p.join()
+        for p in processors:
+            p.join()

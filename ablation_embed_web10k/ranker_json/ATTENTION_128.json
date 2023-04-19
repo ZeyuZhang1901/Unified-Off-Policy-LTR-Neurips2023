@@ -24,6 +24,7 @@
     "embed_type": "ATTENTION",
     "num_head": 4,
     "update_embed": "True",
+    "embed_nodes": 128,
 
     "auto_actor_alpha": "False",
     "initial_log_alpha": -10.0,
@@ -33,6 +34,6 @@
     "using_cql": "True",
     "with_lagrange": "False",
     "target_action_gap": 0.0,
-    "initial_log_cql_alpha": 2.0
+    "initial_log_cql_alpha": 0.0
 
 }

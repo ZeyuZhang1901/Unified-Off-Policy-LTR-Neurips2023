@@ -100,11 +100,8 @@ class IPWRanker(AbstractRanker):
         if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
             train_lbd = torch.as_tensor(np.array(lbd)).to(self.device)
             train_clicks = torch.as_tensor(np.array(clicks)).to(self.device)
-            train_pw = torch.clip(
-                1 / (torch.cumprod(1+1e-9- train_clicks * (1 - train_lbd), dim=1)
-                / (1 +1e-9- train_clicks * (1 - train_lbd))),
-                max=1e3
-            )
+            train_pw = 1 / (torch.cumprod(1+1e-9- train_clicks * (1 - (train_lbd+1e-4)), dim=1)
+                / (1 +1e-9- train_clicks * (1 - (train_lbd + 1e-4))))
         else:
             train_pw = torch.as_tensor(np.array(pw)).to(self.device)
 

@@ -21,10 +21,10 @@
     "objective_metric": "ndcg_10",
 
     "state_type": "avg",
-    "embed_type": "RNN",
-    "num_layer": 4,
+    "embed_type": "None",
+    "num_head": 4,
     "update_embed": "True",
-    "embed_nodes": 512,
+    "embed_nodes": 256,
 
     "auto_actor_alpha": "False",
     "initial_log_alpha": -10.0,

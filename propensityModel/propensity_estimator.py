@@ -124,6 +124,8 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             last_click_count = torch.zeros(data_set.rank_list_size)
             position_click_count = torch.zeros(data_set.rank_list_size)
         while session_num < 1e7:
+            if session_num % 5e4 == 0:
+                print("Randomized click experiments: %d" % session_num)
             index = random.randint(0, len(label_lists) - 1)
             random.shuffle(label_lists[index])
             click_list, _, _ = self.click_model.sampleClicksForOneList(

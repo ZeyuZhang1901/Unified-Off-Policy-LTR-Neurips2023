@@ -27,6 +27,9 @@ class Actor(nn.Module):
         self.sequential = nn.Sequential().to(dtype=torch.float32)
         for i in range(len(num_node_list)):
             next_num_node = int(num_node_list[i])
+            # self.sequential.add_module(
+            #     f"batchnorm{i+1}", nn.BatchNorm1d(num_node)
+            # )
             self.sequential.add_module(
                 f"linear{i+1}", nn.Linear(num_node, next_num_node)
             )
