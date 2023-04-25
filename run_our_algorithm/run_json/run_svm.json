@@ -1,8 +1,8 @@
 {
-    "feature_size": 136,
+    "feature_size": 220,
     "max_visuable_size": 10,
     "batch_size": 256,
-    "dataset_fold": "/content/MSLR-WEB10K",
+    "dataset_fold": "AbsolutePath/of/your/dataset/fold",
     "logging": "svm",
     "click_models": [
         "dcm",
@@ -16,10 +16,10 @@
         0.1
     ],
     "rel_level": 4,
-    "five_fold": "True",
+    "five_fold": "False",
 
     
     "epochs": 2000,
-    "steps_per_checkpoint": 50,
+    "steps_per_checkpoint": 20,
     "steps_per_save": 500
 }

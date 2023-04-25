@@ -14,10 +14,11 @@ click_types=("cascade" "pbm" "dcm")
 etas=("1")
 # min_probs=("0.1" "0.2" "0.3")
 min_probs=("0.1")
-rel_level=2
+rel_level=4
 
 
 echo "-----------------------Estimation Start!---------------------------"
+
 for model in "${click_types[@]}"
 do
     if [ ! -d "$output_fold/$model/" ]
@@ -41,3 +42,4 @@ do
     done
 done
 
+echo "-----------------------Estimation Done!---------------------------"

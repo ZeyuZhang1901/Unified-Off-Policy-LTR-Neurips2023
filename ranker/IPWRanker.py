@@ -27,6 +27,7 @@ class IPWRanker(AbstractRanker):
         self.batch_size = hypers["batch_size"]
         self.l2_loss = hypers["l2_loss"]
         self.max_gradient_norm = hypers["max_gradient_norm"]
+        self.use_cm = eval(hypers["use_cm"])
         self.metric_type = hypers["metric_type"]
         self.metric_topn = hypers["metric_topn"]
         self.objective_metric = hypers["objective_metric"]
@@ -79,31 +80,38 @@ class IPWRanker(AbstractRanker):
         self.model.train()
 
         ## Compute propensity weights for the input data
-        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        if self.use_cm:
             lbd, clicks = [], []
         else:
             pw = []
+        # pw = []
         for i in range(len(input_feed[f"label0"])):
             click_list = [
                 input_feed[f"label{l}"][i] for l in range(self.max_visuable_size)
             ]
 
-            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+            # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+            if self.use_cm:
                 lbd_list = self.propensity_estimator.getLambdaForOneList(click_list)
                 lbd.append(lbd_list)
                 clicks.append(click_list)
             else:
                 pw_list = self.propensity_estimator.getPropensityForOneList(click_list)
                 pw.append(pw_list)
+            # pw_list = self.propensity_estimator.getPropensityForOneList(click_list)
+            # pw.append(pw_list)
 
         ## train
-        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        if self.use_cm:
             train_lbd = torch.as_tensor(np.array(lbd)).to(self.device)
             train_clicks = torch.as_tensor(np.array(clicks)).to(self.device)
             train_pw = 1 / (torch.cumprod(1+1e-9- train_clicks * (1 - (train_lbd+1e-4)), dim=1)
                 / (1 +1e-9- train_clicks * (1 - (train_lbd + 1e-4))))
         else:
             train_pw = torch.as_tensor(np.array(pw)).to(self.device)
+        # train_pw = torch.as_tensor(np.array(pw)).to(self.device)
 
         train_output = self.ranking_model()
         train_labels = self.labels

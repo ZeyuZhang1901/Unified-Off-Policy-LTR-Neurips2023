@@ -11,7 +11,7 @@
     "batch_size": 256,
     "max_gradient_norm": 5.0,
     "soft_update": 5e-3,
-    "discount": 0.8,
+    "discount": 0.9,
     "l2_loss": 1.0,
     "metric_type": [
         "err",
@@ -21,19 +21,19 @@
     "objective_metric": "ndcg_10",
 
     "state_type": "avg",
-    "embed_type": "None",
-    "num_head": 4,
+    "embed_type": "ATTENTION",
+    "num_head": 8,
     "update_embed": "True",
-    "embed_nodes": 256,
+    "pre_represent": "False",
 
     "auto_actor_alpha": "False",
-    "initial_log_alpha": -10.0,
-    "actor_structure": [512, 256, 128],
-    "critic_structure": [512, 256, 128],
+    "initial_log_alpha": -6.0,
+    "actor_structure": [256, 256],
+    "critic_structure": [256, 256],
     
     "using_cql": "True",
     "with_lagrange": "False",
     "target_action_gap": 0.0,
-    "initial_log_cql_alpha": 0.0
+    "initial_log_cql_alpha": 1.9030899869919434
 
 }

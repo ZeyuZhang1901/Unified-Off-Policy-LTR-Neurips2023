@@ -21,15 +21,15 @@
     "objective_metric": "ndcg_10",
 
     "state_type": "avg",
-    "embed_type": "RNN",
-    "num_layer": 4,
+    "embed_type": "None",
     "update_embed": "True",
-    "embed_nodes": 512,
+    "pre_represent": "False",
+    "info": "both",
 
     "auto_actor_alpha": "False",
-    "initial_log_alpha": -10.0,
-    "actor_structure": [512, 256, 128],
-    "critic_structure": [512, 256, 128],
+    "initial_log_alpha": -6.0,
+    "actor_structure": [256, 256],
+    "critic_structure": [256, 256],
     
     "using_cql": "True",
     "with_lagrange": "False",

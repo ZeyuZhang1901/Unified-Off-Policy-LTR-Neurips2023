@@ -1,5 +1,5 @@
 {
-    "feature_size": 220,
+    "feature_size": 136,
     "max_visuable_size": 10,
     "batch_size": 256,
     "dataset_fold": "AbsolutePath/of/your/dataset/fold",
@@ -16,10 +16,10 @@
         0.1
     ],
     "rel_level": 4,
-    "five_fold": "False",
+    "five_fold": "True",
 
     
     "epochs": 2000,
-    "steps_per_checkpoint": 10,
+    "steps_per_checkpoint": 50,
     "steps_per_save": 500
 }

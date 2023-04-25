@@ -97,7 +97,11 @@ def train(
         if ranker.embed_type != "None":
             ckpt = torch.load(checkpoint_path + f"embed(step_{start_checkpoint}).ckpt")
             ranker.embed_model.load_state_dict(ckpt)
-            if ranker.embed_type == "ATTENTION":
+            ckpt = torch.load(
+                checkpoint_path + f"layernorm(step_{start_checkpoint}).ckpt"
+            )
+            ranker.layernorm.load_state_dict(ckpt)
+            if ranker.pre_represent:
                 ckpt = torch.load(
                     checkpoint_path + f"pre_embed(step_{start_checkpoint}).ckpt"
                 )
@@ -125,6 +129,15 @@ def train(
                             ranker.embed_model.state_dict(),
                             checkpoint_path + "embed_best.ckpt",
                         )
+                        torch.save(
+                            ranker.layernorm.state_dict(),
+                            checkpoint_path + "layernorm_best.ckpt",
+                        )
+                        if ranker.pre_represent:
+                            torch.save(
+                                ranker.pre_embed.state_dict(),
+                                checkpoint_path + "pre_embed_best.ckpt",
+                            )
                     break
 
     ## train and validation start
@@ -158,7 +171,11 @@ def train(
                                     ranker.embed_model.state_dict(),
                                     checkpoint_path + "embed_best.ckpt",
                                 )
-                                if ranker.embed_type == "ATTENTION":
+                                torch.save(
+                                    ranker.layernorm.state_dict(),
+                                    checkpoint_path + "layernorm_best.ckpt",
+                                )
+                                if ranker.pre_represent:
                                     torch.save(
                                         ranker.pre_embed.state_dict(),
                                         checkpoint_path + "pre_embed_best.ckpt",
@@ -195,7 +212,11 @@ def train(
                     ranker.embed_model.state_dict(),
                     checkpoint_path + f"embed(step_{ranker.global_step}).ckpt",
                 )
-                if ranker.embed_type == "ATTENTION":
+                torch.save(
+                    ranker.layernorm.state_dict(),
+                    checkpoint_path + f"layernorm(step_{ranker.global_step}).ckpt",
+                )
+                if ranker.pre_represent:
                     torch.save(
                         ranker.pre_embed.state_dict(),
                         checkpoint_path + f"pre_embed(step_{ranker.global_step}).ckpt",
@@ -242,7 +263,10 @@ def test(
         ckpt = torch.load(checkpoint_path + "embed_best.ckpt")
         ranker.embed_model.load_state_dict(ckpt)
         ranker.embed_model.eval()
-        if ranker.embed_type == "ATTENTION":
+        ckpt = torch.load(checkpoint_path + "layernorm_best.ckpt")
+        ranker.layernorm.load_state_dict(ckpt)
+        ranker.layernorm.eval()
+        if ranker.pre_represent:
             ckpt = torch.load(checkpoint_path + "pre_embed_best.ckpt")
             ranker.pre_embed.load_state_dict(ckpt)
             ranker.pre_embed.eval()

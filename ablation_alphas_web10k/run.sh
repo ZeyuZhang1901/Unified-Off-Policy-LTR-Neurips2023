@@ -1,4 +1,4 @@
-output_fold=/content/drive/MyDrive/myLTR/run_demo 
+output_fold=/the/path/to/ablation_alphas_web10k
 running_json_file=$output_fold/run_json/run_mq_svm.json
 start_epoch=0
 front_num=("1" "2" "5")

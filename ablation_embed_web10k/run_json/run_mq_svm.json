@@ -20,6 +20,6 @@
 
     
     "epochs": 2000,
-    "steps_per_checkpoint": 10,
+    "steps_per_checkpoint": 20,
     "steps_per_save": 500
 }

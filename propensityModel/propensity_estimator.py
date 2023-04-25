@@ -63,6 +63,7 @@ class BasicPropensityEstimator:
         with open(file_name) as data_file:
             data = json.load(data_file)
             self.IPW_list = data["IPW_list"]
+            self.lambda_list = data["Lambda_list"]
         return
 
     def outputEstimatorToFile(self, file_name):
@@ -101,8 +102,8 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             if "click_model" in data:
                 self.click_model = CM.loadModelFromJson(data["click_model"])
             self.IPW_list = data["IPW_list"]
-            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
-                self.lambda_list = data["Lambda_list"]
+            # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+            self.lambda_list = data["Lambda_list"]
         return
 
     def estimateParametersFromModel(self, click_model, data_set):
@@ -120,9 +121,9 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         label_lists = copy.deepcopy(data_set.labels)
         # Conduct randomized click experiments
         session_num = 0
-        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
-            last_click_count = torch.zeros(data_set.rank_list_size)
-            position_click_count = torch.zeros(data_set.rank_list_size)
+        # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        last_click_count = torch.zeros(data_set.rank_list_size)
+        position_click_count = torch.zeros(data_set.rank_list_size)
         while session_num < 1e7:
             if session_num % 5e4 == 0:
                 print("Randomized click experiments: %d" % session_num)
@@ -132,11 +133,11 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
                 label_lists[index]
             )
             ## if dcm, estimate lambdas
-            if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
-                position_click_count[: len(click_list)] += torch.tensor(click_list)
-                if sum(click_list) != 0:
-                    index = [i for i, e in enumerate(click_list) if e != 0][-1]
-                    last_click_count[index] += 1
+            # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+            position_click_count[: len(click_list)] += torch.tensor(click_list)
+            if sum(click_list) != 0:
+                index = [i for i, e in enumerate(click_list) if e != 0][-1]
+                last_click_count[index] += 1
 
             # Count how many clicks happened on the i position for a list with
             # that lengths.
@@ -145,10 +146,10 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
             session_num += 1
         # Count how many clicks happened on the 1st position for a list with
         # different lengths.
-        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
-            self.lambda_list = (
-                1 - last_click_count / (position_click_count + 1e-6)
-            ).tolist()
+        # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
+        self.lambda_list = (
+            1 - last_click_count / (position_click_count + 1e-6)
+        ).tolist()
         first_click_count = [0 for _ in range(data_set.rank_list_size)]
         agg_click_count = [0 for _ in range(data_set.rank_list_size)]
         for x in range(len(click_count)):
@@ -173,16 +174,16 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         Args:
             file_name: (string) The path to the json file of the propensity estimator.
         """
+        # json_dict = {
+        #     "click_model": self.click_model.getModelJson(),
+        #     "IPW_list": self.IPW_list,
+        # }
+        # if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
         json_dict = {
             "click_model": self.click_model.getModelJson(),
             "IPW_list": self.IPW_list,
+            "Lambda_list": self.lambda_list,
         }
-        if self.click_model.model_name == "dependent_click_model" or self.click_model.model_name ==  "cascade_model":
-            json_dict = {
-                "click_model": self.click_model.getModelJson(),
-                "IPW_list": self.IPW_list,
-                "Lambda_list": self.lambda_list,
-            }
         with open(file_name, "w") as fout:
             fout.write(json.dumps(json_dict, indent=4, sort_keys=True))
         return
