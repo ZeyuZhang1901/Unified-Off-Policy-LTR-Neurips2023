@@ -98,9 +98,9 @@ class Train_Input_feed(object):
     def get_train_batch(
         self,
         dataset,
+        use_true_labels=False,
         check_validation=True,
     ):
-
         length = len(dataset.initial_list)
         docid_inputs, letor_features, labels = [], [], []
         rank_list_idxs = []
@@ -110,9 +110,24 @@ class Train_Input_feed(object):
         ## total `batch_size` sampled queries
         while len(docid_inputs) < self.batch_size:
             index = int(random.random() * length)
-            self.prepare_clicks_for_one_list(
-                dataset, index, docid_inputs, letor_features, labels, check_validation
-            )
+            if use_true_labels:
+                self.prepare_true_labels(
+                    dataset,
+                    index,
+                    docid_inputs,
+                    letor_features,
+                    labels,
+                    check_validation,
+                )
+            else:
+                self.prepare_clicks_for_one_list(
+                    dataset,
+                    index,
+                    docid_inputs,
+                    letor_features,
+                    labels,
+                    check_validation,
+                )
             if batch_num < len(docid_inputs):
                 rank_list_idxs.append(index)
                 batch_num = len(docid_inputs)
@@ -167,14 +182,13 @@ class Train_Input_feed(object):
         #         )
 
         return input_feed
-    
+
     def get_batch(
         self,
         offset,  # end point of last valid batch
         dataset,
         check_validation=False,
     ):
-
         length = len(dataset.initial_list)
         docid_inputs, letor_features, labels = [], [], []
 
@@ -280,7 +294,6 @@ class Validation_Input_feed(object):
         dataset,
         check_validation=False,
     ):
-
         length = len(dataset.initial_list)
         docid_inputs, letor_features, labels = [], [], []
 

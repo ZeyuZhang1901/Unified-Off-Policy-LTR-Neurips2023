@@ -26,6 +26,9 @@ parser.add_argument("--ranker_json_file", type=str, required=True)  # ranker jso
 parser.add_argument("--running_json_file", type=str, required=True)  # running json file
 parser.add_argument("--start_epoch", type=int, default=0)  # start epoch
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
+parser.add_argument(
+    "use_true_labels", default=False, action="store_true"
+)  # use true labels or not
 args = parser.parse_args()
 
 
@@ -58,8 +61,8 @@ def train(
     steps_per_checkpoint,
     steps_per_save,
     checkpoint_path,
+    use_true_labels=False,
 ):
-
     best_perf = None
 
     ## Load actor, critic1 and critic2 statistics from selected checkpoints
@@ -94,7 +97,9 @@ def train(
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
-        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
+        input_feed = train_input_feed.get_train_batch(
+            train_set, use_true_labels=use_true_labels, check_validation=True
+        )
         loss_summary, norm_summary = ranker.update_policy(input_feed)
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
@@ -140,9 +145,7 @@ def validation(
     summary_list = []
     batch_size_list = []
     while offset < len(dataset.initial_list):
-        input_feed = data_input_feed.get_batch(
-            offset, dataset, check_validation=False
-        )
+        input_feed = data_input_feed.get_batch(offset, dataset, check_validation=False)
         _, _, summary = ranker.validation(input_feed)
 
         ## deepcopy the summary dict
@@ -199,6 +202,7 @@ def job(
     ranker_json_file,
     output_fold,
     test_only,
+    use_true_labels=False,
 ):
     click_model_path = (
         whole_path
@@ -280,6 +284,7 @@ def job(
                 steps_per_checkpoint=steps_per_checkpoint,
                 steps_per_save=steps_per_save,
                 checkpoint_path=f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/",
+                use_true_labels=use_true_labels,
             )
             writer.close()
 
@@ -292,6 +297,7 @@ if __name__ == "__main__":
     running_json_file = args.running_json_file
     start_epoch = args.start_epoch
     test_only = args.test_only
+    use_true_labels = args.use_true_labels
 
     ## running hypers from running json file
     with open(running_json_file) as running_json:
@@ -337,7 +343,7 @@ if __name__ == "__main__":
                 f"Epochs: {epochs}\tValid step: {steps_per_checkpoint}\tSave step: {steps_per_save}"
             )
             train_set = data_utils.read_data(path, "train", None, 0, logging)
-            if os.path.isfile(path+"vali.txt"):
+            if os.path.isfile(path + "vali.txt"):
                 valid_set = data_utils.read_data(path, "vali", None, 0, logging)
             else:
                 valid_set = data_utils.read_data(path, "valid", None, 0, logging)
@@ -372,6 +378,7 @@ if __name__ == "__main__":
                             ranker_json_file,
                             output_fold,
                             test_only,
+                            use_true_labels,
                         ),
                     )
                     p.start()

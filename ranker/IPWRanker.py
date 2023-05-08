@@ -63,7 +63,6 @@ class IPWRanker(AbstractRanker):
         self,
         input_id_list,
     ):
-
         PAD_embed = np.zeros((1, self.feature_size), dtype=np.float32)
         letor_features = np.concatenate((self.letor_features, PAD_embed), axis=0)
         input_feature_list = []
@@ -107,8 +106,10 @@ class IPWRanker(AbstractRanker):
         if self.use_cm:
             train_lbd = torch.as_tensor(np.array(lbd)).to(self.device)
             train_clicks = torch.as_tensor(np.array(clicks)).to(self.device)
-            train_pw = 1 / (torch.cumprod(1+1e-9- train_clicks * (1 - (train_lbd+1e-4)), dim=1)
-                / (1 +1e-9- train_clicks * (1 - (train_lbd + 1e-4))))
+            train_pw = 1 / (
+                torch.cumprod(1 + 1e-9 - train_clicks * (1 - (train_lbd + 1e-4)), dim=1)
+                / (1 + 1e-9 - train_clicks * (1 - (train_lbd + 1e-4)))
+            )
         else:
             train_pw = torch.as_tensor(np.array(pw)).to(self.device)
         # train_pw = torch.as_tensor(np.array(pw)).to(self.device)

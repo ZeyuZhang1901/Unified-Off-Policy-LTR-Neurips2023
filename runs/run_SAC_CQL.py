@@ -24,6 +24,9 @@ parser.add_argument("--ranker_json_file", type=str, required=True)  # ranker jso
 parser.add_argument("--running_json_file", type=str, required=True)  # running json file
 parser.add_argument("--start_epoch", type=int, default=0)  # start epoch
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
+parser.add_argument(
+    "use_true_labels", default=False, action="store_true"
+)  # use true labels or not
 args = parser.parse_args()
 
 
@@ -56,8 +59,8 @@ def train(
     steps_per_checkpoint,
     steps_per_save,
     checkpoint_path,
+    use_true_labels=False,
 ):
-
     best_perf = None
 
     ## Load actor, critic1 and critic2 statistics from selected checkpoints
@@ -142,8 +145,12 @@ def train(
 
     ## train and validation start
     for i in range(num_iteration - start_checkpoint):
-        input_feed = train_input_feed.get_train_batch(train_set, check_validation=True)
-        loss_summary, norm_summary, q_summary, alpha_summary = ranker.update_policy(input_feed)
+        input_feed = train_input_feed.get_train_batch(
+            train_set, use_true_labels=use_true_labels, check_validation=True
+        )
+        loss_summary, norm_summary, q_summary, alpha_summary = ranker.update_policy(
+            input_feed
+        )
         writer.add_scalars("Loss", loss_summary, ranker.global_step)
         writer.add_scalars("Norm", norm_summary, ranker.global_step)
         writer.add_scalars("Q Value", q_summary, ranker.global_step)
@@ -233,9 +240,7 @@ def validation(
     summary_list = []
     batch_size_list = []
     while offset < len(dataset.initial_list):
-        input_feed = data_input_feed.get_batch(
-            offset, dataset, check_validation=False
-        )
+        input_feed = data_input_feed.get_batch(offset, dataset, check_validation=False)
         _, _, summary = ranker.validation(input_feed)
 
         ## deepcopy the summary dict
@@ -270,7 +275,6 @@ def test(
             ckpt = torch.load(checkpoint_path + "pre_embed_best.ckpt")
             ranker.pre_embed.load_state_dict(ckpt)
             ranker.pre_embed.eval()
-        
 
     with torch.no_grad():
         test_summary = validation(test_set, test_input_feed, ranker)
@@ -303,8 +307,8 @@ def job(
     ranker_json_file,
     output_fold,
     test_only,
+    use_true_labels=False,
 ):
-
     click_model_path = (
         whole_path
         + f"clickModel/{click_type}/{click_type}_{min_prob}_1.0_{rel_level}_{eta}.json"
@@ -377,18 +381,19 @@ def job(
                 steps_per_checkpoint=steps_per_checkpoint,
                 steps_per_save=steps_per_save,
                 checkpoint_path=f"{output_fold}/fold{f}/{click_type}/minprob_{min_prob}_eta_{eta}_run{r}/",
+                use_true_labels=use_true_labels,
             )
             writer.close()
 
 
 if __name__ == "__main__":
-
     torch.multiprocessing.set_start_method("spawn")
     output_fold = args.output_fold
     ranker_json_file = args.ranker_json_file
     running_json_file = args.running_json_file
     start_epoch = args.start_epoch
     test_only = args.test_only
+    use_true_labels = args.use_true_labels
 
     with open(running_json_file) as running_json:
         hypers = json.load(running_json)
@@ -466,6 +471,7 @@ if __name__ == "__main__":
                             ranker_json_file,
                             output_fold,
                             test_only,
+                            use_true_labels,
                         ),
                     )
                     p.start()

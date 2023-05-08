@@ -279,9 +279,7 @@ class DependentClickModel(ClickModel):
             # exam, click, exam_p, click_p = self.sampleClick(
             #     rank, last_click, label_list[rank]
             # )
-            click, click_p = self.sampleClick(
-                rank, last_click, label_list[rank]
-            )
+            click, click_p = self.sampleClick(rank, last_click, label_list[rank])
             click_p_list.append(click_p)
             click_list.append(click)
             # exam_p_list.append(exam_p)
@@ -325,6 +323,75 @@ class DependentClickModel(ClickModel):
 
     def getExamProb(self, rank):
         return self.exam_prob[rank if rank < len(self.exam_prob) else -1]
+
+
+class ClickChainModel(ClickModel):
+    @property
+    def model_name(self):
+        return "click_chain_model"
+
+    def setExamProb(self, eta):
+        self.eta = eta
+        self.alpha1 = 0.9  # estimation prob after non-click
+        self.alpha2 = 0.5  # estimation prob after click (if irrelevant)
+        self.alpha3 = 0.25  # estimation prob after click (if relevant)
+        self.exam_prob = [self.alpha1] * 10
+
+    def sampleClicksForOneList(self, label_list):
+        click_list, exam_p_list, click_p_list = [], [], []
+        last_click = False
+        done = False
+        for rank in range(label_list):
+            if done:
+                click_list.append(0.0)
+                exam_p_list.append(0.0)
+                click_p_list.append(0.0)
+                continue
+            click, click_p = self.sampleClick(last_click, label_list[rank])
+            click_p_list.append(click_p)
+            click_list.append(click)
+
+            # check whether next document should be estimated
+            exam_p = self.getExamProb(label_list[rank], click)
+            # exam_p = self.alpha1
+            # if click > 0:  # if click
+            #     exam_p = self.alpha2 * (
+            #         1 - pow(2, label_list[rank]) / pow(2, len(self.click_prob) - 1)
+            #     ) + self.alpha3 * pow(2, label_list[rank]) / pow(
+            #         2, len(self.click_prob) - 1
+            #     )
+            done = random.random() < 1 - exam_p
+            exam_p_list.append(exam_p)
+
+        return click_list, exam_p_list, click_p_list
+
+    def estimatePropensityWeightsForOneList(
+        self, click_list, use_non_clicked_data=False
+    ):
+        propensity_weights = []
+        for r in range(len(click_list)):
+            pw = 0.0
+            if use_non_clicked_data | click_list[r] > 0:
+                pw = 1.0 / self.getExamProb(r) * self.getExamProb(0)
+            propensity_weights.append(pw)
+        return propensity_weights
+
+    def sampleClick(self, last_click, relevance_label):
+        if not relevance_label == int(relevance_label):
+            print("RELEVANCE LABEL MUST BE INTEGER!")
+        relevance_label = int(relevance_label) if relevance_label > 0 else 0
+        click_p = self.click_prob[
+            relevance_label if relevance_label < len(self.click_prob) else -1
+        ]
+        click = 1 if random.random() < click_p else 0
+        return click, click_p
+
+    def getExamProb(self, relevance_label, click):
+        if click > 0:
+            return self.alpha2 * (
+                1 - pow(2, relevance_label) / pow(2, len(self.click_prob) - 1)
+            ) + self.alpha3 * pow(2, relevance_label) / pow(2, len(self.click_prob) - 1)
+        return self.alpha1
 
 
 def test_initialization():
@@ -377,6 +444,7 @@ def main():
         "cascade": CascadeModel,
         "ubm": UserBrowsingModel,
         "dcm": DependentClickModel,
+        "ccm": ClickChainModel,
     }
 
     model_name = sys.argv[1]

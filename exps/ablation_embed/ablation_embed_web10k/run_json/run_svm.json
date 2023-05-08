@@ -1,0 +1,24 @@
+{
+    "feature_size": 136,
+    "max_visuable_size": 10,
+    "batch_size": 256,
+    "dataset_fold": "/root/path/of/istella/dataset/after/preprocess",
+    "logging": "svm",
+    "click_models": [
+        "dcm",
+        "cascade",
+        "pbm",
+        "ccm"
+    ],
+    "etas": [
+        1
+    ],
+    "min_probs": [
+        0.1
+    ],
+    "rel_level": 4,
+    "five_fold": "True",
+    "epochs": 2000,
+    "steps_per_checkpoint": 50,
+    "steps_per_save": 500
+}
