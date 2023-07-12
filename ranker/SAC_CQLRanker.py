@@ -946,14 +946,13 @@ class SAC_CQLRanker(AbstractRanker):
             self.output = self.validation_forward()
         pad_removed_output = self.remove_padding_for_metric_eval()
         ## reshape from [max_candidate_num, ?] to [?, max_candidate_num]
-        offset = 0.02  # offset for metric value to avoid minus value
         for metric in self.metric_type:
             topns = self.metric_topn
             metric_values = metrics.make_ranking_metric_fn(metric, topns)(
                 self.labels, pad_removed_output, None
             )
             for topn, metric_value in zip(topns, metric_values):
-                self.eval_summary[f"{metric}_{topn}"] = metric_value.item() + offset
+                self.eval_summary[f"{metric}_{topn}"] = metric_value.item()
 
         return None, self.output, self.eval_summary  # no loss, outputs, summary.
 
