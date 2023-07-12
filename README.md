@@ -1,125 +1,48 @@
-# Offline Learning to Rank Codebase
+# Off-Policy Learning to Rank Codebase
 
-Offline learning to rank (LTR) python codebase, algorithms below are implemented.
+This codebase is used to implement the results in paper [Unified Off-Policy Learning to Rank: a Reinforcement Learning Perspective](https://arxiv.org/abs/2306.07528).
 
-- *MDP-based*: DQN-CQL, **SAC-CQL**
-- *baselines*: IPW, **CM-IPW** (for cascade and dcm), **DLA** (state of the art)
+- ***CUOLR***: RL-based (SAC, CQL)
+- ***BASELINES***: DLA, IPW, CM-IPW
 
-## Project Structure
+## Experiments
 
-The folder structure (**bold font** for folder)
+### Prepare Click Data with SVM Ranker
 
-- **Click model**: simulate users' click probabilities and browsing behavior
-- **dataset**: generate initial rank lists for all queries, either using *SVM ranker* or *Random ranker* as initial ranker (logging policy)
-- **libsvm_tools**: data preprocess tools, forming "ULTRA" or "ULTRE" data (not that important)
-- **network**: Neural network structure for each algorithm
-- **ranker**: rankers trained with different algorithms
-  - each file is named as `{alg_name}Ranker.py`.
-  - general methods are: *update_policy (update policy after training one epoch)*, *validation_forward (validate on valid set while training)*
-- **runs**: each file runs an exp with a certain algorithm.
-  - each file is named as `run_{alg_name}.py`
-  - files named `run_{dataset_name}.sh` are files that run multiple algorithms at one time, not necessary.
-- **utils**: utilities, including *metric calculation* (need in validation and testing), *curves plotting*
-- `svm_rank_classify`, `svm_rank_learn`, `svm_rank_linux64.tar.gz` are SVM ranker files, not that important.
+Choose the data preprocess bash file based on the dataset you use: `dataset/data_preprocess_{dataset-name}.sh`, where `dataset-name={istella_s, web10k, yahoo}`. Then run the following code after you change `Data_path` in the first line to the root path of the dataset:
 
-```bash
-## folder tree (`` for folder)
-├── `clickModel`
-│   ├── `cascade`
-│   ├── click_models.py
-│   ├── `dcm`
-│   ├── __init__.py
-│   ├── json_generate.sh
-│   ├── `pbm`
-│   └── `ubm`
-├── `dataset`
-│   ├── data_preprocess_istella.sh
-│   ├── data_preprocess_mq.sh
-│   ├── data_preprocess_web10k.sh
-│   ├── data_utils.py
-│   ├── __init__.py
-├── environment.yml
-├── `Exp1`
-│   └── run_exp1.sh
-├── `Exp2`
-│   └── run_exp2.sh
-├── `Exp3`
-│   └── run_exp3.sh
-├── `Exp_test`
-│   ├── `ranker_json`
-|	├── `run_json`
-├── `libsvm_tools`
-│   ├── clean_libsvm_file.py
-│   ├── clean_tail.py
-│   ├── extrac_feature_statistics.py
-│   ├── initial_ranking_with_svm_rank.py
-│   ├── logging_offline_eval.py
-│   ├── normalize_feature.py
-│   ├── prepare_exp_data_with_svmrank.py
-│   ├── sample_libsvm_data.py
-│   └── split_libsvm_data.py
-├── LICENSE.txt
-├── `network`
-│   ├── DLA.py
-│   ├── DQN_CQL.py
-│   ├── IPW.py
-│   └── SAC_CQL.py
-├── `propensityModel`
-│   ├── json_generate.sh
-│   ├── propensity_estimator.py
-├── `ranker`
-│   ├── AbstractRanker.py
-│   ├── DLARanker.py
-│   ├── DQN_CQLRanker.py
-│   ├── __init__.py
-│   ├── IPWRanker.py
-│   └── SAC_CQLRanker.py
-├── README.md
-├── runs
-│   ├── run_DLA.py
-│   ├── run_DQN_CQL.py
-│   ├── run_IPW.py
-│   └── run_SAC_CQL.py
-├── svm_rank_classify
-├── svm_rank_learn
-├── svm_rank_linux64.tar.gz
-├── test.py
-└── `utils`
-    ├── __init__.py
-    ├── input_feed.py
-    ├── metrics.py
-    ├── metric_utils.py
-    ├── plot.py
-```
+```bash ./dataset/data_preprocess_{dataset-name}.sh ```
 
-## Run Experiments
+### Run Experiments
 
-All running files are under `runs` folder, each represent an algorithm. Some arguments should be given as input.
+All the experiments are in `exps` folder, each subfolder refers to an experiment in the paper accordingly. To run any experiment on any dataset, do the following steps:
 
-- `--output_fold`: str, folder that store the outputs, including training curves and trained models.
-- `--ranker_json_file`: str, json file that store the hyperparameters of ranker.
-- `--running_json_file`: str, json file that store the hyperparameters to run one experiments.
-- `--start_epoch`: int, index of the starting checkpoint.
-- `--test_only`: bool, train or test (default: train)
+1. Open `exps/{exp-name}/{exp-data-name}/run.sh` and change `output_fold` to `exps/{exp-name}/{exp-data-name}`
+2. Open `exps/{exp-name}/{exp-data-name}/run_json/run_svm.json` and change `dataset_fold` to the root path of the dataset.
+3. Run `bash ./exps/{exp-name}/{exp-data-name}/run.sh`
 
-The example is in `Exp_test` folder. Run 
+where `exp-name={ablation_alphas, ablation_embed, baselines}` and `data-name={istella_s, web10k, yahoo}`
 
-```bash
-bash ./Exp_test/run_test.sh
-```
+## Results and Analysis
 
-## Results Visualization
+### Evaluation
 
-The results are collected and visualized by `tensorboard`. Run
+Evaluation results on the test set can be seen in `exps/{exp-name}/{exp-data-name}/results/performance.txt`, with `{err, ndcg}@{3,5,10}` as metrics. 
 
-```bash
-tensorboard --logdir {output_fold}
-```
+### T-test
 
-Or directly run
+To run T-test, do the following steps:
 
-```bash
-python ./utils/plot.py
-```
+1. Change `result_path` and `output_path` in main function in `T_test/T_test_{exp-name}.py`, where
+   - `result_path`: path to evaluation metric file.
+   - `output_path`: path to T-test result you want to store.
+   - `exp-name`: `baseline` or `embed`.
+2. Run `python ./T_test/T_test_{exp-name}.py`
 
-to plot evaluation curves. metrics: (err, ndcg) @ (3,5,10)
+### Plot 
+
+Plot is only needed in ablation study of conservatism. To plot the curves for different alphas under different click models, run the following code:
+
+```python plot/plot_alpha_ablation.py [arg1] [arg2]```
+
+where `arg1` refers to `root_file_path`, path to the root folder of performance files; and `arg2` refers to `output_path`, path to the output file to store plot figure.

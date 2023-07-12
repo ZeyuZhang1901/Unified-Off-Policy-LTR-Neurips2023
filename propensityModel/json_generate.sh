@@ -1,12 +1,12 @@
+echo "This script is used to generate propensities for each click model."
+
 model_fold=D:/Projects/myLTR/clickModel  # path of click model json files
 output_fold=D:/Projects/myLTR/propensityModel  # path to store propensity model json files
 data_fold=/home/zeyuzhang/LearningtoRank/datasets/MQ2008/Fold1/tmp_data/  # path of dataset (down to "tmp_data" folder if logging is svm format)
-# mkdir $output_fold
-
+mkdir $output_fold
 cd ./propensityModel  # change to `propensity_estimator.py` directory
 
-
-
+echo "Generate setting:"
 # click_types=("dcm")
 # click_types=("cascade" "pbm" "dcm" "ubm")
 click_types=("cascade" "pbm" "dcm")
@@ -15,6 +15,7 @@ etas=("1")
 # min_probs=("0.1" "0.2" "0.3")
 min_probs=("0.1")
 rel_level=4
+echo "click types: ${click_types[@]}\netas: ${etas[@]}\nmin_probs: ${min_probs[@]}\nrel_level: $rel_level"
 
 
 echo "-----------------------Estimation Start!---------------------------"

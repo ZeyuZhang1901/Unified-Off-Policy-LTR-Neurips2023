@@ -341,7 +341,7 @@ class ClickChainModel(ClickModel):
         click_list, exam_p_list, click_p_list = [], [], []
         last_click = False
         done = False
-        for rank in range(label_list):
+        for rank in range(len(label_list)):
             if done:
                 click_list.append(0.0)
                 exam_p_list.append(0.0)

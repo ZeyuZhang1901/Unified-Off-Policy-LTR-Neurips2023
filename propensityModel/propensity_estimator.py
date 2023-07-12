@@ -85,7 +85,6 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         Args:
             file_name: (string) The path to the json file of the propensity estimator.
                         'None' means creating from scratches.
-
         """
         if file_name:
             self.loadEstimatorFromFile(file_name)
@@ -112,7 +111,6 @@ class RandomizedPropensityEstimator(BasicPropensityEstimator):
         Args:
             click_model: (ClickModel) The click model used to generate clicks.
             data_set: (Raw_data) The data set with rank lists and labels.
-
         """
         self.click_model = click_model
         click_count = [

@@ -135,41 +135,73 @@ class Train_Input_feed(object):
         letor_features_length = len(letor_features)
 
         ## mask invalid docids with max index (refer to zero feature vector)
-        for i in range(local_batch_size):
-            for j in range(self.max_visuable_size):
-                if docid_inputs[i][j] < 0:
-                    docid_inputs[i][j] = letor_features_length
+        if use_true_labels:
+            for i in range(local_batch_size):
+                for j in range(self.max_candidate_num):
+                    if docid_inputs[i][j] < 0:
+                        docid_inputs[i][j] = letor_features_length
+        else:
+            for i in range(local_batch_size):
+                for j in range(self.max_visuable_size):
+                    if docid_inputs[i][j] < 0:
+                        docid_inputs[i][j] = letor_features_length
 
         ## construct batch_docid_inputs (list of float32 nparrays with shape [batch_size])
         ## and batch_labels (list of float32 nparrays with shape [batch_size])
         batch_docid_inputs = []
         batch_labels = []
-        for length_idx in range(self.max_visuable_size):
-            batch_docid_inputs.append(
-                np.array(
-                    [
-                        docid_inputs[batch_idx][length_idx]
-                        for batch_idx in range(local_batch_size)
-                    ],
-                    dtype=np.float32,
+        if use_true_labels:
+            for length_idx in range(self.max_candidate_num):
+                batch_docid_inputs.append(
+                    np.array(
+                        [
+                            docid_inputs[batch_idx][length_idx]
+                            for batch_idx in range(local_batch_size)
+                        ],
+                        dtype=np.float32,
+                    )
                 )
-            )
-            batch_labels.append(
-                np.array(
-                    [
-                        labels[batch_idx][length_idx]
-                        for batch_idx in range(local_batch_size)
-                    ],
-                    dtype=np.float32,
+                batch_labels.append(
+                    np.array(
+                        [
+                            labels[batch_idx][length_idx]
+                            for batch_idx in range(local_batch_size)
+                        ],
+                        dtype=np.float32,
+                    )
                 )
-            )
+        else:
+            for length_idx in range(self.max_visuable_size):
+                batch_docid_inputs.append(
+                    np.array(
+                        [
+                            docid_inputs[batch_idx][length_idx]
+                            for batch_idx in range(local_batch_size)
+                        ],
+                        dtype=np.float32,
+                    )
+                )
+                batch_labels.append(
+                    np.array(
+                        [
+                            labels[batch_idx][length_idx]
+                            for batch_idx in range(local_batch_size)
+                        ],
+                        dtype=np.float32,
+                    )
+                )
 
         ## Create input feed map
         input_feed = {}
         input_feed["letor_features"] = np.array(letor_features)
-        for l in range(self.max_visuable_size):
-            input_feed[f"docid_input{l}"] = batch_docid_inputs[l]
-            input_feed[f"label{l}"] = batch_labels[l]
+        if use_true_labels:
+            for l in range(self.max_candidate_num):
+                input_feed[f"docid_input{l}"] = batch_docid_inputs[l]
+                input_feed[f"label{l}"] = batch_labels[l]
+        else:
+            for l in range(self.max_visuable_size):
+                input_feed[f"docid_input{l}"] = batch_docid_inputs[l]
+                input_feed[f"label{l}"] = batch_labels[l]
 
         # self.global_batch_count += 1
         # if self.dynamic_bias_eta_change != 0:

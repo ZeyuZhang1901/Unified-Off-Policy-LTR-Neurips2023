@@ -27,7 +27,7 @@ parser.add_argument("--running_json_file", type=str, required=True)  # running j
 parser.add_argument("--start_epoch", type=int, default=0)  # start epoch
 parser.add_argument("--test_only", default=False, action="store_true")  # train or test
 parser.add_argument(
-    "use_true_labels", default=False, action="store_true"
+    "--use_true_labels", default=False, action="store_true"
 )  # use true labels or not
 args = parser.parse_args()
 

@@ -1,4 +1,4 @@
-Data_path="D:\\Projects\\Learning_to_Rank_Challenge"   ## Data path where to unzip the data
+Data_path="path/to/unzip/the/data"   ## Data path where to unzip the data
 Data_folder=""            ## subfolder after unzip
 Feature_number=700             ## how many features for LETOR data
 Prepro_fun=""                ## additional function to do preprocessing, available, "log", "None", we default normalize data to -1 and 1. If choosing log, it will first using log function to the data and then normalize it to -1 and 1. 
